@@ -2,8 +2,8 @@ from django.db import models
 
 # Create your models here.
 class Node(models.Model):
-    name = models.CharField(max_length='128')
-    address = models.CharField(max_length='512')
+    name = models.CharField(max_length=128)
+    address = models.CharField(max_length=512)
 
 class Edge(models.Model): 
     # Implements a one way edge by default : source => destination
