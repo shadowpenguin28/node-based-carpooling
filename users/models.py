@@ -7,9 +7,9 @@ from .managers import CustomUserManager
 
 class User(AbstractUser):
     USER_ROLES = (
-        ("Driver", "DRIVER"),
-        ("Passenger", "PASSENGER"),
-        ("Admin", "ADMIN")
+        ("driver", "Driver"),
+        ("passenger", "Passenger"),
+        ("admin", "Admin")
     )
 
     username = None
