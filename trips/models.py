@@ -29,15 +29,53 @@ class Trip(models.Model):
         through="TripPassenger",
         help_text="Users (role: Passenger) onboard trip"
     )
-    max_passengers = models.IntegerField(help_text="Maximum passengners allowed on trip")
+    max_passengers = models.PositiveIntegerField(help_text="Maximum passengners allowed on trip")
 
-    start_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='start_node')
-    end_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='end_node')
-    current_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='current_node', null=True, blank=True)
+    start_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='trip_start_node')
+    end_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='trip_end_node')
+    current_node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name='trip_current_node', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def get_route(self):
-        pass
+        '''Ordered list of nodes'''
+        return [t.node for t in self.tripnode_set.all()]
+    def get_remaining_route(self):
+        '''Ordered list of remaining nodes'''
+        current_order = TripNode.objects.get(trip=self, node=self.current_node).order
+        return [t.node for t in self.tripnode_set.filter(order__gte=current_order)]
+    
+    def start_trip(self):
+        self.status = self.Status.ACTIVE
+        self.current_node = self.start_node
+        self.save()
+    
+    def advance_to_next_node(self):
+        if self.current_node == self.end_node:
+            self.complete_trip()
+            return None
+        
+        remaining = self.get_remaining_route()
+        next_node = remaining[1]
+        self.current_node = next_node
+        self.save()
+        return next_node
+    
+    def complete_trip(self):
+        self.status = self.Status.COMPLETED
+        self.save()
+
+    def cancel_trip(self):
+        self.status = self.Status.CANCELLED
+        self.save()
+
+    @property
+    def active_passenger_count(self):
+        return self.trippassenger_set.filter(boarding_status__in = [TripPassenger.BoardingStatus.BOARDED, TripPassenger.BoardingStatus.PENDING]).count()
+
+    @property    
+    def can_board_more(self):
+        return bool(self.active_passenger_count < self.max_passengers)
+
 
 class TripNode(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
@@ -64,5 +102,14 @@ class TripPassenger(models.Model):
     drop = models.ForeignKey(Node, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
-        unique_together = [("trip", "passenger")] 
+        unique_together = [("trip", "passenger")]
 
+    def board(self):
+        self.boarding_status = self.BoardingStatus.BOARDED
+        self.save()
+    def drop_off(self):
+        self.boarding_status = self.BoardingStatus.DROPPED
+        self.save()
+    def no_show(self):
+        self.boarding_status = self.BoardingStatus.NO_SHOW 
+        self.save()
