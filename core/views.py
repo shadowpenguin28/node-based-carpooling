@@ -10,6 +10,9 @@ from .models import Node, Edge
 from .serializers import NodeSerializer, EdgeSerializer
 # Create your views here.
 
+def landing_page_view(request):
+    return render(request, 'core/index.html')
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdmin])
 def create_node_view(request):

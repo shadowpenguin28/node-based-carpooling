@@ -21,6 +21,8 @@ class User(AbstractUser):
     gender = models.CharField(max_length=10, null=True, blank=True)
     dob = models.DateField(null=True, blank=True)
     phone_number = models.CharField(max_length=10) # working with only Indian Phone Numbers
+    wallet_balance = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
 
     USERNAME_FIELD = "email"
 

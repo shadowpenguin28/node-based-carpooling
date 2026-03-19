@@ -40,7 +40,9 @@ class Trip(models.Model):
         '''Ordered list of nodes'''
         return [t.node for t in self.tripnode_set.all()]
     def get_remaining_route(self):
-        '''Ordered list of remaining nodes'''
+        '''Ordered list of remaining nodes (full route if trip hasn't started yet)'''
+        if self.current_node is None:
+            return [t.node for t in self.tripnode_set.all()]
         current_order = TripNode.objects.get(trip=self, node=self.current_node).order
         return [t.node for t in self.tripnode_set.filter(order__gte=current_order)]
     
@@ -136,3 +138,15 @@ class DriverOffer(models.Model):
     fare = models.FloatField()
     detour = models.PositiveIntegerField()
     status = models.CharField(choices=Status.choices, default=Status.PENDING)
+
+class Transaction(models.Model):
+    TYPES = [
+        ('top_up','Top Up'), 
+        ('fare_deduction','Fare Deduction'), 
+        ('driver_earning','Driver Earning')
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    trip = models.ForeignKey(Trip, null=True, blank=True, on_delete=models.SET_NULL)
+    type = models.CharField(max_length=20, choices=TYPES)
+    amount = models.DecimalField(max_digits=8, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)

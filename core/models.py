@@ -31,3 +31,4 @@ class ServiceConfig(models.Model):
     def is_service_active(cls):
         config, _ = cls.objects.get_or_create(pk=1)
         return config.is_active
+

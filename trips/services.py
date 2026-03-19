@@ -172,3 +172,11 @@ def calculate_fare(trip, passenger_pickup, passenger_drop, price_per_hop, base_f
 
     fare = price_per_hop * total + base_fee
     return round(fare, 2)
+
+# DO a more optimal implementation of route reclculation
+# def calculate_new_route(trip: Trip, pickup, detour):
+#     # FIND OPTIMAL INSERTION AND PICKUP POINTS
+
+#     # RECONSTRUCT THE NEW ROUTE
+
+#     pass

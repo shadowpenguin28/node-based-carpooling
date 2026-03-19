@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from .views import (
     create_trip_view, start_trip_view, advance_trip_view, cancel_trip_view,
     create_carpool_request, view_driver_offers, accept_driver_offer,
@@ -8,14 +8,13 @@ from .views import (
     admin_view_active_trips, admin_toggle_service,
 )
 
-urlpatterns = [
+api_urlpatterns = [
     # Trip lifecycle (Driver)
     path('create/', create_trip_view, name='create_trip'),
     path('<int:trip_id>/start/', start_trip_view, name='start_trip'),
     path('<int:trip_id>/advance/', advance_trip_view, name='advance_trip'),
     path('<int:trip_id>/cancel/', cancel_trip_view, name='cancel_trip'),
     path('<int:trip_id>/dashboard/', trip_dashboard, name='trip_dashboard'),
-    path('dashboard/', driver_dashboard_page, name='driver_dashboard_page'),
     path('mine/', fetch_driver_trips, name='fetch_driver_trips'),
 
     # Carpool request (Passenger)
@@ -31,4 +30,11 @@ urlpatterns = [
     # Admin
     path('admin/active/', admin_view_active_trips, name='admin_view_active_trips'),
     path('admin/service/toggle/', admin_toggle_service, name='admin_toggle_service'),
+]
+
+urlpatterns = [
+    path('api/', include(api_urlpatterns)),
+
+    # Server-rendered pages
+    path('dashboard/', driver_dashboard_page, name='driver_dashboard_page'),
 ]
