@@ -40,9 +40,12 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'rest_framework.authtoken',
+    'allauth',
+    'allauth.account',
     'users',
     'core',
-    'trips'
+    'trips',
+    'allauth.socialaccount.providers.google',
 ]
 
 MIDDLEWARE = [
@@ -53,6 +56,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.ServiceActiveMiddleware',
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 ROOT_URLCONF = 'carpool.urls'
@@ -105,7 +110,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailAuthenticationBackend'
+    'users.backends.EmailAuthenticationBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
 REST_FRAMEWORK = {

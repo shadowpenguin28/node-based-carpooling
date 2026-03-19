@@ -16,3 +16,18 @@ class Edge(models.Model):
         unique_together = ('source', 'destination')
 
 
+class ServiceConfig(models.Model):
+    """Singleton model for global service configuration."""
+    is_active = models.BooleanField(default=True, help_text="Whether the carpooling service is active")
+
+    class Meta:
+        verbose_name = "Service Configuration"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1  # Singleton — only one row
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def is_service_active(cls):
+        config, _ = cls.objects.get_or_create(pk=1)
+        return config.is_active

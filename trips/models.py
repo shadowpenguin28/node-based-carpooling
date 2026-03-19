@@ -113,3 +113,26 @@ class TripPassenger(models.Model):
     def no_show(self):
         self.boarding_status = self.BoardingStatus.NO_SHOW 
         self.save()
+
+class CarPoolRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        MATCHED = 'matched', 'Matched'
+        CANCELLED = 'cancelled', 'Cancelled'
+    passenger = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    pickup = models.ForeignKey(Node, on_delete=models.PROTECT, related_name="+")
+    drop = models.ForeignKey(Node, on_delete=models.PROTECT, related_name="+")
+    status = models.CharField(choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateField(auto_now_add=True)
+
+class DriverOffer(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        ACCEPTED = 'accepted', 'Accepted'
+        REJECTED = 'rejected', 'Rejected'
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    carpool_request = models.ForeignKey(CarPoolRequest, on_delete=models.CASCADE)
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
+    fare = models.FloatField()
+    detour = models.PositiveIntegerField()
+    status = models.CharField(choices=Status.choices, default=Status.PENDING)

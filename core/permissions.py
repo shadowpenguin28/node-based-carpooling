@@ -10,3 +10,19 @@ class IsAdmin(permissions.BasePermission):
             return True
         
         return False
+
+class IsDriver(permissions.BasePermission):
+    message = 'Must be driver'
+    def has_permission(self, request, view):
+        if request.user and request.user.role == "driver":
+            return True
+        
+        return False
+
+class IsPassenger(permissions.BasePermission):
+    message = 'Must be passenger'
+    def has_permission(self, request, view):
+        if request.user and request.user.role == "passenger":
+            return True
+        
+        return False

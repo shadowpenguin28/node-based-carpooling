@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; color: #333; }
+        h1 { margin-bottom: 20px; }
+        h2 { margin: 20px 0 10px; color: #555; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+        th { background: #f9f9f9; font-weight: 600; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-planned { background: #cce5ff; color: #004085; }
+        .badge-completed { background: #f8d7da; color: #721c24; }
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-boarded { background: #d4edda; color: #155724; }
+        .badge-dropped { background: #e2e3e5; color: #383d41; }
+        .badge-accepted { background: #d4edda; color: #155724; }
+        .badge-rejected { background: #f8d7da; color: #721c24; }
+        .empty { color: #999; font-style: italic; padding: 12px; }
+        .btn { display: inline-block; padding: 6px 16px; background: #007bff; color: #fff; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 14px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>🚗 Driver Dashboard — {{ driver_name }}</h1>
+
+    {% if not trips %}
+        <p class="empty">You have no trips yet.</p>
+    {% endif %}
+
+    {% for trip in trips %}
+    <div class="card">
+        <h2>Trip #{{ trip.id }}: {{ trip.start_node }} → {{ trip.end_node }}
+            <span class="badge badge-{{ trip.status }}">{{ trip.status|upper }}</span>
+        </h2>
+
+        <p><strong>Current node:</strong> {{ trip.current_node|default:"Not started" }}
+        &nbsp;|&nbsp; <strong>Passengers:</strong> {{ trip.passenger_count }} / {{ trip.max_passengers }}</p>
+
+        <h3 style="margin-top:16px;">Route</h3>
+        <table>
+            <tr><th>#</th><th>Node</th><th>Status</th></tr>
+            {% for node in trip.route %}
+            <tr>
+                <td>{{ node.order }}</td>
+                <td>{{ node.name }}</td>
+                <td>
+                    {% if node.is_current %}<span class="badge badge-active">📍 HERE</span>
+                    {% elif node.is_passed %}<span class="badge badge-completed">✓ Passed</span>
+                    {% else %}<span class="badge badge-planned">Upcoming</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3>Passengers</h3>
+        {% if trip.passengers %}
+        <table>
+            <tr><th>Name</th><th>Pickup</th><th>Drop</th><th>Status</th><th>Fare</th></tr>
+            {% for p in trip.passengers %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.pickup }}</td>
+                <td>{{ p.drop }}</td>
+                <td><span class="badge badge-{{ p.boarding_status }}">{{ p.boarding_status }}</span></td>
+                <td>{{ p.fare|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+            <p class="empty">No passengers yet.</p>
+        {% endif %}
+
+        <h3>Your Offers</h3>
+        {% if trip.offers %}
+        <table>
+            <tr><th>Passenger</th><th>Pickup</th><th>Drop</th><th>Detour</th><th>Fare</th><th>Status</th></tr>
+            {% for o in trip.offers %}
+            <tr>
+                <td>{{ o.passenger }}</td>
+                <td>{{ o.pickup }}</td>
+                <td>{{ o.drop }}</td>
+                <td>+{{ o.detour }} hops</td>
+                <td>₹{{ o.fare }}</td>
+                <td><span class="badge badge-{{ o.status }}">{{ o.status }}</span></td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+            <p class="empty">No offers made.</p>
+        {% endif %}
+
+        <h3>Matching Carpool Requests</h3>
+        {% if trip.matching_requests %}
+        <table>
+            <tr><th>Passenger</th><th>Pickup</th><th>Drop</th><th>Detour</th><th>Est. Fare</th><th></th></tr>
+            {% for req in trip.matching_requests %}
+            <tr>
+                <td>{{ req.passenger }}</td>
+                <td>{{ req.pickup }}</td>
+                <td>{{ req.drop }}</td>
+                <td>+{{ req.detour }} hops</td>
+                <td>₹{{ req.fare }}</td>
+                <td>
+                    <form method="post" action="{% url 'create_driver_offer' req_id=req.request_id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}">
+                        <button type="submit" class="btn">Offer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+            <p class="empty">No matching requests.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html>

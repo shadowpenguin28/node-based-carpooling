@@ -1,4 +1,4 @@
-from .models import Trip, TripNode, TripPassenger
+from .models import Trip, TripNode, TripPassenger, CarPoolRequest, DriverOffer
 from core import graph
 from django.db.models import Q
 
@@ -72,14 +72,14 @@ def find_matching_trips(pickup, drop):
 
 def calculate_detour(trip: Trip, pickup, drop):
     """
-    Finds the optimal insertion points for pickup and drop in the remaining route.
-    Returns dict with detour info, or None if no valid insertion exists.
+    Finds the optimal way to insert pickup and drop into the remaining route.
     
-    For each pair of insertion points (i for pickup, j for drop where j >= i):
-      - Compute path: route[i] → pickup → route[i+1]  (pickup detour)
-      - Compute path: route[j] → drop → route[j+1]    (drop detour)
-      - Total detour = extra hops added by both insertions
-    Pick the pair that minimizes total detour.
+    Tries all pairs (depart_idx, rejoin_idx) where:
+      - route[depart_idx] → pickup → ... → drop → route[rejoin_idx]
+      - depart_idx < rejoin_idx
+    
+    Detour = new_hops - original_hops_between(depart, rejoin)
+    Returns dict with detour info, or None if no valid insertion exists.
     """
     remaining_route = trip.get_remaining_route()
 
@@ -88,40 +88,37 @@ def calculate_detour(trip: Trip, pickup, drop):
 
     best = None
 
-    for i in range(len(remaining_route) - 1):
-        # Pickup detour: route[i] → pickup → route[i+1]
+    for i in range(len(remaining_route)):
+        # Can we get from route[i] to pickup?
         path_to_pickup = graph.find_shortest_path(remaining_route[i], pickup)
         if path_to_pickup is None:
             continue
-        path_from_pickup = graph.find_shortest_path(pickup, remaining_route[i + 1])
-        if path_from_pickup is None:
+
+        # Can we get from pickup to drop?
+        path_pickup_to_drop = graph.find_shortest_path(pickup, drop)
+        if path_pickup_to_drop is None:
             continue
 
-        # Extra hops from pickup insertion
-        # Original: 1 hop (route[i] → route[i+1])
-        # New: (route[i] → pickup) + (pickup → route[i+1])
-        pickup_extra = (len(path_to_pickup) - 1) + (len(path_from_pickup) - 1) - 1
-
-        for j in range(i, len(remaining_route) - 1):
-            # Drop detour: route[j] → drop → route[j+1]
-            path_to_drop = graph.find_shortest_path(remaining_route[j], drop)
-            if path_to_drop is None:
-                continue
-            path_from_drop = graph.find_shortest_path(drop, remaining_route[j + 1])
+        # Now find where drop can rejoin the route (at index j > i)
+        for j in range(i + 1, len(remaining_route)):
+            path_from_drop = graph.find_shortest_path(drop, remaining_route[j])
             if path_from_drop is None:
                 continue
 
-            drop_extra = (len(path_to_drop) - 1) + (len(path_from_drop) - 1) - 1
-            total_detour = pickup_extra + drop_extra
+            # Calculate detour cost
+            # New hops: route[i]→pickup + pickup→drop + drop→route[j]
+            new_hops = (len(path_to_pickup) - 1) + (len(path_pickup_to_drop) - 1) + (len(path_from_drop) - 1)
+            # Original hops between route[i] and route[j] (j - i direct hops)
+            original_hops = j - i
+            detour = new_hops - original_hops
 
-            if best is None or total_detour < best['detour']:
+            if best is None or detour < best['detour']:
                 best = {
-                    'detour': total_detour,
-                    'pickup_insert_after': i,
-                    'drop_insert_after': j,
+                    'detour': detour,
+                    'depart_idx': i,
+                    'rejoin_idx': j,
                     'path_to_pickup': path_to_pickup,
-                    'path_from_pickup': path_from_pickup,
-                    'path_to_drop': path_to_drop,
+                    'path_pickup_to_drop': path_pickup_to_drop,
                     'path_from_drop': path_from_drop,
                 }
 

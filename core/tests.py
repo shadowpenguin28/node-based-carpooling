@@ -70,7 +70,7 @@ class CreateNodeTest(NodeViewTestSetup):
     def test_unauthenticated_cannot_create_node(self):
         data = {'name': 'Node A', 'address': '123 Main St'}
         response = self.client.post('/core/nodes/create/', data)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_create_node_missing_fields(self):
         self.auth_as_admin()

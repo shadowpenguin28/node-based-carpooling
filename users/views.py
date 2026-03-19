@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework import status
-from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth import get_user_model, authenticate, login, logout
 from .serializers import UserSignupSerializer
 # Create your views here.
 
@@ -32,11 +32,13 @@ def user_signup_view(request):
     # errors
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 @api_view(['POST'])
 def login_view(request):
     user = authenticate(request, email=request.data.get('email', None), password=request.data.get('password', None))
 
     if user != None:
+        login(request, user)
         token, created = Token.objects.get_or_create(user=user)
         return Response(data={
             'token': token.key,
@@ -50,6 +52,7 @@ def login_view(request):
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     request.user.auth_token.delete()
+    logout(request)
     return Response(data={
         'message': 'Logged out',
     }, status=status.HTTP_200_OK)
