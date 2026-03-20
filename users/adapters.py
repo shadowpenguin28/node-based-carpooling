@@ -2,7 +2,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
  
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.exceptions import ImmediateHttpResponse
+from allauth.core.exceptions import ImmediateHttpResponse
  
 from users.models import User
  

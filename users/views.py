@@ -9,12 +9,9 @@ from django.http import JsonResponse
 from .serializers import UserSignupSerializer
 # Create your views here.
 
-from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from django.views.decorators.http import require_GET
 from allauth.socialaccount.helpers import complete_social_login
 from allauth.core.exceptions import ImmediateHttpResponse
-from dj_rest_auth.registration.views import SocialLoginView
 from .forms import UserSignupForm
 
 def login_page_view(request):
@@ -37,16 +34,6 @@ def signup_page_view(request):
     else:
         form = UserSignupForm()
     return render(request, 'users/signup.html', {'form': form})
-
-class GoogleLoginView(SocialLoginView):
-    adapter_class = GoogleOAuth2Adapter
-    callback_url = 'http://localhost:8000/auth/callback'
-    client_class = OAuth2Client
-
-    def get_response(self):
-        response = super().get_response()
-        response.data['token'] = response.data.pop('key', None) 
-        return response
 
 @require_GET
 def google_callback_view(request):
