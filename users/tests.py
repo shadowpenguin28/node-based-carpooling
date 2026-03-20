@@ -13,8 +13,8 @@ class UserManagerTest(TestCase):
     def test_create_user(self):
         User = get_user_model()
         test_email = f.email()
-        phone_number = f.phone_number()
-        user = User.objects.create_user(email=test_email, password=password, role="PASSENGER", phone_number=phone_number)
+        phone_number = f.numerify('##########')
+        user = User.objects.create_user(email=test_email, password=password, role="passenger", phone_number=phone_number)
 
         self.assertEqual(test_email, user.email)
         self.assertTrue(user.is_active)
@@ -33,9 +33,9 @@ class UserManagerTest(TestCase):
     def test_create_superuser(self):
         User = get_user_model()
         test_email = f.email()
-        phone_number = f.phone_number()
+        phone_number = f.numerify('##########')
 
-        superuser = User.objects.create_superuser(email=test_email, password=password, role="ADMIN", phone_number=phone_number)
+        superuser = User.objects.create_superuser(email=test_email, password=password, role="admin", phone_number=phone_number)
         
         self.assertEqual(test_email, superuser.email)
         self.assertTrue(superuser.is_active)
@@ -76,6 +76,7 @@ class LoginViewTest(APITestCase):
             email='test@example.com',
             password=password,
             role='driver',
+            phone_number=f.numerify('##########') 
         )
     def test_login_success(self):
         data = {'email': 'test@example.com', 'password': password}
@@ -95,7 +96,7 @@ class LogoutViewTest(APITestCase):
             email='test@example.com',
             password=password,
             role='driver',
-            phone_number = f.phone_number()
+            phone_number = f.numerify('##########')
         )
         response = self.client.post('/users/api/login/', {
             'email': 'test@example.com',
@@ -110,4 +111,4 @@ class LogoutViewTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     def test_logout_without_auth(self):
         response = self.client.post('/users/logout/')
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)

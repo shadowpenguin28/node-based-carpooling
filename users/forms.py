@@ -4,6 +4,10 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 class UserSignupForm(forms.ModelForm):
+    role = forms.ChoiceField(
+        choices=[choice for choice in User.USER_ROLES if choice[0] != 'admin'],
+        widget=forms.Select(attrs={'class': 'form-input'})
+    )
     password = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-input'}))
     password2 = forms.CharField(
         label='Confirm Password',
@@ -11,13 +15,13 @@ class UserSignupForm(forms.ModelForm):
     ) 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'email', 'phone_number', 'role']
+        fields = ['first_name', 'last_name', 'email', 'phone_number', 'dob']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'form-input'}),
             'last_name': forms.TextInput(attrs={'class': 'form-input'}),
             'email': forms.EmailInput(attrs={'class': 'form-input'}),
             'phone_number': forms.TextInput(attrs={'class': 'form-input'}),
-            'role': forms.Select(attrs={'class': 'form-input'}),
+            'dob': forms.DateInput(attrs={'class': 'form-input', 'type': 'date'})
         }
     
     def clean(self):

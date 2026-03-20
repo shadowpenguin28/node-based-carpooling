@@ -1,116 +1,116 @@
 from .models import Trip, TripNode, TripPassenger, CarPoolRequest, DriverOffer
 from core import graph
-from django.db.models import Q
+
 
 def create_trip(driver, start_node, end_node, max_passengers):
     try:
-        if driver.role != "driver" or max_passengers <= 0: 
+        if driver.role != "driver" or max_passengers <= 0:
             return None
-    except:
+    except Exception:
+        return None
+
+    route = graph.find_shortest_path(start_node=start_node, end_node=end_node)
+    if route is None:
         return None
 
     trip = Trip(
-        driver = driver, 
-        max_passengers=max_passengers, 
-        start_node=start_node, 
-        end_node=end_node
+        driver=driver,
+        max_passengers=max_passengers,
+        start_node=start_node,
+        end_node=end_node,
     )
-
-    # generate route
-    route = graph.find_shortest_path(start_node=start_node, end_node=end_node)
-    tripnodes = []
-    if route != None:
-        for i in range(len(route)):
-            trip_node = TripNode(trip = trip, node = route[i], order=i)
-            tripnodes.append(trip_node)
-    else:
-        return None
-
-    # save the entries if no errors encountered
     trip.save()
-    TripNode.objects.bulk_create(tripnodes)
+    TripNode.objects.bulk_create([
+        TripNode(trip=trip, node=route[i], order=i)
+        for i in range(len(route))
+    ])
     return trip
 
-def add_passenger_to_trip(passenger, trip: Trip, pickup_node, drop_node):
+
+def add_passenger_to_trip(passenger, trip: Trip, pickup_node, drop_node, fare=None):
     try:
         if passenger.role != "passenger":
-            return "Invalid User type"
-    except:
-        return "Invalid data"
-    
+            return None
+    except Exception:
+        return None
+
     if not trip.can_board_more:
         return None
-    
-    trip_passenger = TripPassenger(trip=trip, pickup=pickup_node, drop=drop_node, passenger=passenger)
-    trip_passenger.boarding_status = TripPassenger.BoardingStatus.PENDING
 
-    trip_passenger.save()
+    tp = TripPassenger(
+        trip=trip,
+        pickup=pickup_node,
+        drop=drop_node,
+        passenger=passenger,
+        boarding_status=TripPassenger.BoardingStatus.PENDING,
+        fare=fare,
+    )
+    tp.save()
+    return tp
 
-    return trip_passenger
 
 def find_matching_trips(pickup, drop):
-    matching_trips = []
-    trips = Trip.objects.filter(status__in = ['planned', 'active'])
+    matching = []
+    trips = Trip.objects.filter(status__in=['planned', 'active'])
 
     for trip in trips:
         if not trip.can_board_more:
             continue
 
-        remaining_route = trip.get_remaining_route()
+        reachable = set()
+        for node in trip.get_remaining_route():
+            for n in graph.nodes_in_n_hops(node, 2):
+                reachable.add(n)
 
-        reachable_nodes = set()
-        for node in remaining_route:
-            available = graph.nodes_in_n_hops(node, 2)
+        if pickup in reachable and drop in reachable:
+            matching.append(trip)
 
-            for n in available:
-                reachable_nodes.add(n)
-        
-        if pickup in reachable_nodes and drop in reachable_nodes:
-            matching_trips.append(trip)
-    
-    return matching_trips
+    return matching
+
 
 def calculate_detour(trip: Trip, pickup, drop):
-    """
-    Finds the optimal way to insert pickup and drop into the remaining route.
-    
-    Tries all pairs (depart_idx, rejoin_idx) where:
-      - route[depart_idx] → pickup → ... → drop → route[rejoin_idx]
-      - depart_idx < rejoin_idx
-    
-    Detour = new_hops - original_hops_between(depart, rejoin)
-    Returns dict with detour info, or None if no valid insertion exists.
-    """
-    remaining_route = trip.get_remaining_route()
-
-    if len(remaining_route) < 2:
+    remaining = trip.get_remaining_route()
+    if len(remaining) < 2:
         return None
+
+    path_pickup_to_drop = graph.find_shortest_path(pickup, drop)
+    if path_pickup_to_drop is None:
+        return None
+
+    pickup_neighbours = set(graph.nodes_in_n_hops(pickup, 2))
+    drop_neighbours = set(graph.nodes_in_n_hops(drop, 2))
+
+    depart_candidates = [
+        (i, node) for i, node in enumerate(remaining)
+        if node in pickup_neighbours or node == pickup
+    ]
+    rejoin_candidates = [
+        (j, node) for j, node in enumerate(remaining)
+        if node in drop_neighbours or node == drop
+    ]
 
     best = None
 
-    for i in range(len(remaining_route)):
-        # Can we get from route[i] to pickup?
-        path_to_pickup = graph.find_shortest_path(remaining_route[i], pickup)
+    for i, depart_node in depart_candidates:
+        path_to_pickup = graph.find_shortest_path(depart_node, pickup)
         if path_to_pickup is None:
             continue
 
-        # Can we get from pickup to drop?
-        path_pickup_to_drop = graph.find_shortest_path(pickup, drop)
-        if path_pickup_to_drop is None:
-            continue
+        for j, rejoin_node in rejoin_candidates:
+            if j <= i:
+                continue
 
-        # Now find where drop can rejoin the route (at index j > i)
-        for j in range(i + 1, len(remaining_route)):
-            path_from_drop = graph.find_shortest_path(drop, remaining_route[j])
+            path_from_drop = graph.find_shortest_path(drop, rejoin_node)
             if path_from_drop is None:
                 continue
 
-            # Calculate detour cost
-            # New hops: route[i]→pickup + pickup→drop + drop→route[j]
-            new_hops = (len(path_to_pickup) - 1) + (len(path_pickup_to_drop) - 1) + (len(path_from_drop) - 1)
-            # Original hops between route[i] and route[j] (j - i direct hops)
-            original_hops = j - i
-            detour = new_hops - original_hops
+            new_hops = (
+                (len(path_to_pickup) - 1)
+                + (len(path_pickup_to_drop) - 1)
+                + (len(path_from_drop) - 1)
+            )
+            orig_hops = j - i
+            detour = new_hops - orig_hops
 
             if best is None or detour < best['detour']:
                 best = {
@@ -125,58 +125,115 @@ def calculate_detour(trip: Trip, pickup, drop):
     return best
 
 
-def calculate_fare(trip, passenger_pickup, passenger_drop, price_per_hop, base_fee):
-    """
-    Fare formula: fare = price_per_hop × Σ(1/nᵢ) + base_fee
-    
-    nᵢ = number of passengers in the car at hop i (including this passenger).
-    Sum is over all hops where this passenger is onboard.
-    """
-    route = trip.get_route()
-
-    # Find indices of pickup and drop in the route
-    try:
-        pickup_idx = next(i for i, node in enumerate(route) if node.id == passenger_pickup.id)
-        drop_idx = next(i for i, node in enumerate(route) if node.id == passenger_drop.id)
-    except StopIteration:
-        return None  # pickup or drop not found on route
-
-    if pickup_idx >= drop_idx:
-        return None
-
-    # Get all active passengers and find their segments on the route
-    trip_passengers = TripPassenger.objects.filter(
-        trip=trip,
-        boarding_status__in=['pending', 'boarded']
+def build_new_route(remaining: list, detour_info: dict):
+    i = detour_info['depart_idx']
+    j = detour_info['rejoin_idx']
+    return (
+        remaining[:i + 1]
+        + detour_info['path_to_pickup'][1:]
+        + detour_info['path_pickup_to_drop'][1:]
+        + detour_info['path_from_drop'][1:]
+        + remaining[j + 1:]
     )
 
-    passenger_segments = []
-    for tp in trip_passengers:
-        try:
-            p_start = next(i for i, node in enumerate(route) if node.id == tp.pickup.id)
-            p_end = next(i for i, node in enumerate(route) if node.id == tp.drop.id)
-            passenger_segments.append((p_start, p_end))
-        except StopIteration:
-            continue
 
-    # Include the new passenger's segment
-    passenger_segments.append((pickup_idx, drop_idx))
+def apply_detour_to_trip(trip: Trip, detour_info: dict):
+    remaining = trip.get_remaining_route()
+    depart_node = remaining[detour_info['depart_idx']]
+    depart_order = TripNode.objects.get(trip=trip, node=depart_node).order
 
-    # Sum 1/nᵢ for each hop where this passenger is onboard
-    total = 0
+    new_route = build_new_route(remaining, detour_info)
+    tail = new_route[detour_info['depart_idx'] + 1:]
+
+    TripNode.objects.filter(trip=trip, order__gt=depart_order).delete()
+    TripNode.objects.bulk_create([
+        TripNode(trip=trip, node=node, order=depart_order + 1 + idx)
+        for idx, node in enumerate(tail)
+    ])
+
+
+def calculate_fare(trip: Trip, passenger_pickup, passenger_drop,
+                   detour_info: dict, price_per_hop: float, base_fee: float):
+    remaining = trip.get_remaining_route()
+    new_route = build_new_route(remaining, detour_info)
+
+    pickup_idx = next(
+        (i for i, n in enumerate(new_route) if n.id == passenger_pickup.id), None
+    )
+    drop_idx = next(
+        (i for i, n in enumerate(new_route) if n.id == passenger_drop.id), None
+    )
+
+    if pickup_idx is None or drop_idx is None or pickup_idx >= drop_idx:
+        return None
+
+    existing_passengers = TripPassenger.objects.filter(
+        trip=trip,
+        boarding_status__in=[
+            TripPassenger.BoardingStatus.PENDING,
+            TripPassenger.BoardingStatus.BOARDED,
+        ],
+    )
+
+    segments = []
+    for tp in existing_passengers:
+        p_start = next(
+            (i for i, n in enumerate(new_route) if n.id == tp.pickup.id), None
+        )
+        p_end = next(
+            (i for i, n in enumerate(new_route) if n.id == tp.drop.id), None
+        )
+        if p_start is not None and p_end is not None and p_start < p_end:
+            segments.append((p_start, p_end))
+
+    segments.append((pickup_idx, drop_idx))
+
+    total = 0.0
     for hop in range(pickup_idx, drop_idx):
-        # A passenger is onboard at hop i if pickup <= i and drop > i
-        n_i = sum(1 for (p, d) in passenger_segments if p <= hop and d > hop)
+        n_i = sum(1 for (board, alight) in segments if board <= hop < alight)
         if n_i > 0:
             total += 1.0 / n_i
 
-    fare = price_per_hop * total + base_fee
-    return round(fare, 2)
+    return round(price_per_hop * total + base_fee, 2)
 
-# DO a more optimal implementation of route reclculation
-# def calculate_new_route(trip: Trip, pickup, detour):
-#     # FIND OPTIMAL INSERTION AND PICKUP POINTS
+def calculate_final_fare(trip: Trip, trip_passenger: TripPassenger,
+                          price_per_hop: float, base_fee: float):
+    """
+    Recalculates fare at drop-off time using the actual stored route.
+    Accounts for any detours added after the passenger boarded.
+    """
+    route = trip.get_route()
 
-#     # RECONSTRUCT THE NEW ROUTE
+    pickup_idx = next(
+        (i for i, n in enumerate(route) if n.id == trip_passenger.pickup.id), None
+    )
+    drop_idx = next(
+        (i for i, n in enumerate(route) if n.id == trip_passenger.drop.id), None
+    )
 
-#     pass
+    if pickup_idx is None or drop_idx is None or pickup_idx >= drop_idx:
+        return None
+
+    all_passengers = TripPassenger.objects.filter(
+        trip=trip,
+        boarding_status__in=[
+            TripPassenger.BoardingStatus.PENDING,
+            TripPassenger.BoardingStatus.BOARDED,
+            TripPassenger.BoardingStatus.DROPPED,
+        ]
+    )
+
+    segments = []
+    for tp in all_passengers:
+        p_start = next((i for i, n in enumerate(route) if n.id == tp.pickup.id), None)
+        p_end = next((i for i, n in enumerate(route) if n.id == tp.drop.id), None)
+        if p_start is not None and p_end is not None and p_start < p_end:
+            segments.append((p_start, p_end))
+
+    total = 0.0
+    for hop in range(pickup_idx, drop_idx):
+        n_i = sum(1 for (board, alight) in segments if board <= hop < alight)
+        if n_i > 0:
+            total += 1.0 / n_i
+
+    return round(price_per_hop * total + base_fee, 2)

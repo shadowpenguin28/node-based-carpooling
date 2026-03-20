@@ -6,7 +6,8 @@ from .views import (
     view_carpool_requests, create_driver_offer,
     fetch_driver_trips, trip_dashboard, driver_dashboard_page,
     passenger_dashboard_page, admin_dashboard_page,
-    admin_view_active_trips, admin_toggle_service,
+    admin_view_active_trips, admin_toggle_service, board_passenger, dropoff_passenger,
+    top_up_wallet, wallet_transactions,
 )
 
 api_urlpatterns = [
@@ -17,6 +18,8 @@ api_urlpatterns = [
     path('<int:trip_id>/cancel/', cancel_trip_view, name='cancel_trip'),
     path('<int:trip_id>/dashboard/', trip_dashboard, name='trip_dashboard'),
     path('mine/', fetch_driver_trips, name='fetch_driver_trips'),
+    path('<int:trip_id>/board/<int:passenger_id>/', board_passenger, name='board_passenger'),
+    path('<int:trip_id>/dropoff/<int:passenger_id>/', dropoff_passenger, name='dropoff_passenger'),
 
     # Carpool request (Passenger)
     path('carpool/request/', create_carpool_request, name='create_carpool_request'),
@@ -31,6 +34,10 @@ api_urlpatterns = [
     # Admin
     path('admin/active/', admin_view_active_trips, name='admin_view_active_trips'),
     path('admin/service/toggle/', admin_toggle_service, name='admin_toggle_service'),
+
+    # Wallet
+    path('wallet/topup/', top_up_wallet, name='top_up_wallet'),
+    path('wallet/transactions/', wallet_transactions, name='wallet_transactions'),
 ]
 
 urlpatterns = [

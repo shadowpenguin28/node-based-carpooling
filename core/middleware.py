@@ -13,6 +13,7 @@ class ServiceActiveMiddleware:
         '/users/',
         '/core/',
         '/trips/admin/',
+        '/trips/api/admin/',
     ]
 
     def __init__(self, get_response):

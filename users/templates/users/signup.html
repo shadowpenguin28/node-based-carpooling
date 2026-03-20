@@ -35,22 +35,11 @@
             text-align: center;
         }
 
-        .logo {
-            font-size: 2rem;
-            margin-bottom: 8px;
-        }
-
         h1 {
             font-size: 1.5rem;
             font-weight: 700;
             margin-bottom: 4px;
             color: #1a1a2e;
-        }
-
-        .subtitle {
-            font-size: 0.9rem;
-            color: #6b7280;
-            margin-bottom: 24px;
         }
 
         .form-group {
@@ -130,9 +119,7 @@
 
 <body>
     <div class="card">
-        <div class="logo">🚗</div>
         <h1>Create an account</h1>
-        <p class="subtitle">Join Carpool today</p>
 
         <form method="POST">
             {% csrf_token %}

@@ -4,7 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework import status
-from django.contrib.auth import get_user_model, login, logout, authenticate
+from django.contrib.auth import get_user_model, login, logout, authenticate, decorators
+from django.http import JsonResponse
 from .serializers import UserSignupSerializer
 # Create your views here.
 
@@ -12,7 +13,7 @@ from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from django.views.decorators.http import require_GET
 from allauth.socialaccount.helpers import complete_social_login
-from allauth.exceptions import ImmediateHttpResponse
+from allauth.core.exceptions import ImmediateHttpResponse
 from dj_rest_auth.registration.views import SocialLoginView
 from .forms import UserSignupForm
 
@@ -31,7 +32,7 @@ def signup_page_view(request):
                 return redirect('driver_dashboard_page')
             elif user.role == "passenger":
                 return redirect("passenger_dashboard")
-            else:
+            elif user.role == "admin":
                 return redirect("admin_dashboard")
     else:
         form = UserSignupForm()
@@ -107,17 +108,23 @@ def login_view(request):
     
     return Response(data={"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def logout_view(request):
-    Token.objects.filter(user=request.user).delete() # delete api tokens
-    logout(request) # logout any active browser logins i.e. django sessions
+    if request.META.get('HTTP_AUTHORIZATION'):
+        from rest_framework.authentication import TokenAuthentication
+        try:
+            user, token = TokenAuthentication().authenticate(request)
+        except Exception:
+            return JsonResponse({'error': 'Invalid or missing token'}, status=401)
+        Token.objects.filter(user=user).delete()
+        logout(request)
+        return JsonResponse({'message': 'Logged out'}, status=200)
 
-    if request.META.get('HTTP_AUTHORIZATION'): # check if its a api client
-        return Response({'message': 'Logged out'}, status=status.HTTP_200_OK)
+    if not request.user.is_authenticated:
+        return redirect('session_login_page')
 
-    # if there is not token sent, its a browser client => redirect to login page
-    return redirect('session_login_page') 
+    Token.objects.filter(user=request.user).delete()
+    logout(request)
+    return redirect('session_login_page')
 
 
 
