@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Passenger Dashboard - Carpool</title>
+    <title>Admin Dashboard - Carpool</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -47,20 +47,21 @@
 </head>
 
 <body>
-    <h1>Welcome, {{ passenger_name }}</h1>
+    <h1>Admin Dashboard - {{ admin_name }}</h1>
     {% if error %}
     <p style="color: red;">{{ error }}</p>
     {% endif %}
 
-    <h2>Your Carpool Requests</h2>
-    {% for req in carpool_requests %}
+    <h2>Active Trips</h2>
+    {% for trip in active_trips %}
     <div class="card">
-        <p><strong>From:</strong> {{ req.pickup.name }} &nbsp;&rarr;&nbsp; <strong>To:</strong> {{ req.drop.name }}</p>
-        <p>Status: <span class="status">{{ req.status|title }}</span></p>
-        <p style="font-size: 0.85rem; color: #9ca3af;">Requested on {{ req.created_at|date:"M d, Y H:i" }}</p>
+        <p><strong>Driver:</strong> {{ trip.driver.first_name }} {{ trip.driver.last_name }}</p>
+        <p><strong>Route:</strong> {{ trip.start_node.name }} &nbsp;&rarr;&nbsp; {{ trip.end_node.name }}</p>
+        <p>Status: <span class="status">{{ trip.status|title }}</span></p>
+        <p style="font-size: 0.85rem; color: #9ca3af;">Created crossing {{ trip.created_at|date:"M d, Y H:i" }}</p>
     </div>
     {% empty %}
-    <p>You have no active or past requests.</p>
+    <p>No active trips right now.</p>
     {% endfor %}
 </body>
 

@@ -49,8 +49,6 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'dj_rest_auth',
-    'dj_rest_auth.registration',
 
     'users',
     'core',
@@ -132,15 +130,18 @@ SOCIALACCOUNT_PROVIDERS = {
         }
     }
 }
+
 ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = 'none'
+ACCOUNT_SIGNUP_FIELDS = {"email*", "password1*", "password2*"}
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_AUTO_SIGNUP = False
-
+SOCIALACCOUNT_ADAPTER = "users.adapters.CustomSocialAccountAdapter" # custom adapter
+SOCIALACCOUNT_LOGIN_ON_GET = True # skip the verification page: you are about to login via a third party account
 
 AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
+    'users.backends.EmailAuthenticationBackend',
 ]
 
 REST_FRAMEWORK = {
@@ -148,12 +149,6 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
-}
-
-REST_AUTH = {
-    'REGISTER_SERIALIZER': 'users.serializers.CustomRegisterSerializer',
-    'TOKEN_SERIALIZER': 'users.serializers.CustomTokenSerializer',
-    # 'TOKEN_MODEL': 'rest_framework.authtoken.models.Token', # for previously existing token model
 }
 
 
@@ -173,3 +168,5 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+LOGIN_REDIRECT_URL = "/trips/dashboard/"
+LOGIN_URL = "/users/login/"

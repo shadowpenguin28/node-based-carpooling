@@ -5,6 +5,7 @@ from .views import (
     cancel_carpool_request,
     view_carpool_requests, create_driver_offer,
     fetch_driver_trips, trip_dashboard, driver_dashboard_page,
+    passenger_dashboard_page, admin_dashboard_page,
     admin_view_active_trips, admin_toggle_service,
 )
 
@@ -37,4 +38,6 @@ urlpatterns = [
 
     # Server-rendered pages
     path('dashboard/', driver_dashboard_page, name='driver_dashboard_page'),
+    path('passenger_dashboard/', passenger_dashboard_page, name='passenger_dashboard'),
+    path('admin_dashboard/', admin_dashboard_page, name='admin_dashboard'),
 ]

@@ -1,14 +1,19 @@
 from django.urls import path, include
-from .views import GoogleLoginView
+from .views import (
+    login_page_view, signup_page_view,
+    user_signup_view, login_view, logout_view
+)
 
 api_urlpatterns = [
-    path('', include('dj_rest_auth.urls')),
-    path('signup/', include('dj_rest_auth.registration.urls')),
-    path('google/', GoogleLoginView.as_view(), name='google-login'),
+    path('signup/', user_signup_view, name='api_user_signup'),
+    path('login/', login_view, name='api_user_login'),
+    path('logout/', logout_view, name='api_user_logout'),
 ]
 
 urlpatterns = [
     path('api/', include(api_urlpatterns)),
-
-    # Server-rendered pages (login, hello – added when building visual layer)
+    path("login/", login_page_view, name="session_login_page"),
+    path("signup/", signup_page_view, name="user_signup"),
+    path("logout/", logout_view, name="session_logout"),
+    path("auth/", include("allauth.urls")),
 ]

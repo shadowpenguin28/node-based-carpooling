@@ -57,17 +57,17 @@ class UserSignupTest(APITestCase):
             'password': password,
             'first_name': 'Test',
             'last_name': 'User',
-            'role': 'Passenger',
+            'role': 'passenger',
             'phone_number': '3147878098'
         }
-        response = self.client.post('/users/signup/', data=data)
+        response = self.client.post('/users/api/signup/', data=data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(User.objects.count(), 1)
-        self.assertEqual(User.objects.first().role, 'Passenger')
+        self.assertEqual(User.objects.first().role, 'passenger')
     
     def test_signup_missing_fields(self):
         data = {'email': 'test@example.com'}
-        response = self.client.post('/users/signup/', data=data)
+        response = self.client.post('/users/api/signup/', data=data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 class LoginViewTest(APITestCase):
@@ -79,14 +79,14 @@ class LoginViewTest(APITestCase):
         )
     def test_login_success(self):
         data = {'email': 'test@example.com', 'password': password}
-        response = self.client.post('/users/login/', data)
+        response = self.client.post('/users/api/login/', data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('token', response.data) 
 
     def test_login_wrong_password(self):
         data = {'email': 'test@example.com', 'password': 'wrongpass'}
-        response = self.client.post('/users/login/', data)
+        response = self.client.post('/users/api/login/', data)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 class LogoutViewTest(APITestCase):
@@ -97,11 +97,12 @@ class LogoutViewTest(APITestCase):
             role='driver',
             phone_number = f.phone_number()
         )
-        response = self.client.post('/users/login/', {
+        response = self.client.post('/users/api/login/', {
             'email': 'test@example.com',
             'password': password,
         })
         self.token = response.data['token']
+        self.client.logout()
 
     def test_logout_success(self):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)

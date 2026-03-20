@@ -517,3 +517,27 @@ def driver_dashboard_page(request):
         'driver_name': f"{request.user.first_name} {request.user.last_name}",
         'trips': trips_data,
     })
+
+@login_required
+def passenger_dashboard_page(request):
+    if request.user.role != 'passenger':
+        return render(request, 'trips/passenger_dashboard.html', {'error': 'Only passengers can access this page'})
+    
+    carpool_requests = CarPoolRequest.objects.filter(passenger=request.user).order_by('-created_at')
+    
+    return render(request, 'trips/passenger_dashboard.html', {
+        'passenger_name': f"{request.user.first_name} {request.user.last_name}",
+        'carpool_requests': carpool_requests,
+    })
+
+@login_required
+def admin_dashboard_page(request):
+    if request.user.role != 'admin':
+        return render(request, 'trips/admin_dashboard.html', {'error': 'Only admins can access this page'})
+    
+    active_trips = Trip.objects.filter(status='active').order_by('-created_at')
+    
+    return render(request, 'trips/admin_dashboard.html', {
+        'admin_name': f"{request.user.first_name} {request.user.last_name}",
+        'active_trips': active_trips,
+    })
