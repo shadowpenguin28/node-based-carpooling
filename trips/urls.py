@@ -8,6 +8,11 @@ from .views import (
     passenger_dashboard_page, admin_dashboard_page,
     admin_view_active_trips, admin_toggle_service, board_passenger, dropoff_passenger,
     top_up_wallet, wallet_transactions,
+    # SSR action views
+    create_trip_page, start_trip_page, advance_trip_page, cancel_trip_page,
+    send_offer_page, board_passenger_page, dropoff_passenger_page,
+    topup_wallet_page, create_request_page, accept_offer_page,
+    cancel_request_page, toggle_service_page,
 )
 
 api_urlpatterns = [
@@ -47,4 +52,19 @@ urlpatterns = [
     path('dashboard/', driver_dashboard_page, name='driver_dashboard_page'),
     path('passenger_dashboard/', passenger_dashboard_page, name='passenger_dashboard'),
     path('admin_dashboard/', admin_dashboard_page, name='admin_dashboard'),
+
+    # SSR action routes
+    path('page/create-trip/', create_trip_page, name='page_create_trip'),
+    path('page/<int:trip_id>/start/', start_trip_page, name='page_start_trip'),
+    path('page/<int:trip_id>/advance/', advance_trip_page, name='page_advance_trip'),
+    path('page/<int:trip_id>/cancel/', cancel_trip_page, name='page_cancel_trip'),
+    path('page/offer/<int:req_id>/', send_offer_page, name='page_send_offer'),
+    path('page/<int:trip_id>/board/<int:passenger_id>/', board_passenger_page, name='page_board_passenger'),
+    path('page/<int:trip_id>/dropoff/<int:passenger_id>/', dropoff_passenger_page, name='page_dropoff_passenger'),
+    path('page/topup/', topup_wallet_page, name='page_topup_wallet'),
+    path('page/create-request/', create_request_page, name='page_create_request'),
+    path('page/request/<int:req_id>/accept/<int:offer_id>/', accept_offer_page, name='page_accept_offer'),
+    path('page/request/<int:cr_id>/cancel/', cancel_request_page, name='page_cancel_request'),
+    path('page/toggle-service/', toggle_service_page, name='page_toggle_service'),
 ]
+

@@ -1,0 +1,329 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Carpool{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ── Reset ───────────────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:        #0f1117;
+            --bg-card:   rgba(255,255,255,0.04);
+            --bg-card-h: rgba(255,255,255,0.07);
+            --border:    rgba(255,255,255,0.08);
+            --text:      #e4e4e7;
+            --text-dim:  #9ca3af;
+            --accent:    #6366f1;
+            --accent-h:  #818cf8;
+            --green:     #22c55e;
+            --green-bg:  rgba(34,197,94,0.12);
+            --yellow:    #eab308;
+            --yellow-bg: rgba(234,179,8,0.12);
+            --red:       #ef4444;
+            --red-bg:    rgba(239,68,68,0.12);
+            --blue:      #3b82f6;
+            --blue-bg:   rgba(59,130,246,0.12);
+            --radius:    12px;
+            --radius-sm: 8px;
+            --shadow:    0 4px 24px rgba(0,0,0,0.3);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.6;
+        }
+
+        a { color: var(--accent-h); text-decoration: none; transition: color .15s; }
+        a:hover { color: #a5b4fc; }
+
+        /* ── Navbar ──────────────────────────────────────────────────────────── */
+        .navbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 32px;
+            background: rgba(15,17,23,0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 100;
+        }
+        .navbar-brand {
+            font-size: 1.25rem; font-weight: 800; color: #fff;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .navbar-brand span { font-size: 1.4rem; }
+        .navbar-links { display: flex; align-items: center; gap: 24px; }
+        .navbar-links a {
+            font-size: 0.9rem; font-weight: 500; color: var(--text-dim);
+            transition: color .15s;
+        }
+        .navbar-links a:hover { color: #fff; }
+        .navbar-user {
+            display: flex; align-items: center; gap: 16px;
+            font-size: 0.88rem; color: var(--text-dim);
+        }
+        .navbar-user strong { color: #fff; }
+        .wallet-badge {
+            background: var(--green-bg); color: var(--green);
+            padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 0.82rem;
+        }
+        .btn-logout {
+            background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+            color: var(--text-dim); padding: 6px 16px; border-radius: var(--radius-sm);
+            font-size: 0.82rem; font-weight: 500; cursor: pointer; transition: all .15s;
+        }
+        .btn-logout:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        /* ── Main ────────────────────────────────────────────────────────────── */
+        .main-content {
+            flex: 1; padding: 32px; max-width: 1200px; width: 100%; margin: 0 auto;
+        }
+
+        /* ── Cards ───────────────────────────────────────────────────────────── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: background .15s;
+        }
+        .card:hover { background: var(--bg-card-h); }
+
+        .card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+        }
+        .card-title {
+            font-size: 1.1rem; font-weight: 700; color: #fff;
+        }
+
+        /* ── Badges ──────────────────────────────────────────────────────────── */
+        .badge {
+            display: inline-block; padding: 3px 10px; border-radius: 20px;
+            font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .badge-active   { background: var(--green-bg);  color: var(--green);  }
+        .badge-planned  { background: var(--blue-bg);   color: var(--blue);   }
+        .badge-completed{ background: rgba(255,255,255,0.06); color: var(--text-dim); }
+        .badge-cancelled{ background: var(--red-bg);    color: var(--red);    }
+        .badge-pending  { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-boarded  { background: var(--green-bg);  color: var(--green);  }
+        .badge-dropped  { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+        .badge-matched  { background: var(--green-bg);  color: var(--green);  }
+        .badge-accepted { background: var(--green-bg);  color: var(--green);  }
+        .badge-rejected { background: var(--red-bg);    color: var(--red);    }
+        .badge-no_show  { background: var(--red-bg);    color: var(--red);    }
+
+        /* ── Tables ──────────────────────────────────────────────────────────── */
+        .table-wrap { overflow-x: auto; }
+        table {
+            width: 100%; border-collapse: collapse; font-size: 0.88rem;
+        }
+        th {
+            text-align: left; padding: 10px 14px;
+            font-weight: 600; font-size: 0.78rem; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: var(--text);
+        }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        /* ── Buttons ─────────────────────────────────────────────────────────── */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 8px 20px; border-radius: var(--radius-sm);
+            font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer;
+            transition: all .15s ease; text-decoration: none;
+        }
+        .btn-primary   { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-h); color: #fff; }
+        .btn-success   { background: var(--green);  color: #fff; }
+        .btn-success:hover { background: #16a34a; color: #fff; }
+        .btn-danger    { background: var(--red);    color: #fff; }
+        .btn-danger:hover  { background: #dc2626; color: #fff; }
+        .btn-outline {
+            background: transparent; border: 1px solid var(--border); color: var(--text);
+        }
+        .btn-outline:hover { background: rgba(255,255,255,0.06); color: #fff; }
+        .btn-sm { padding: 5px 14px; font-size: 0.78rem; }
+
+        /* ── Forms ───────────────────────────────────────────────────────────── */
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block; margin-bottom: 6px;
+            font-size: 0.82rem; font-weight: 500; color: var(--text-dim);
+        }
+        .form-input, select.form-input {
+            width: 100%; padding: 10px 14px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text);
+            font-size: 0.9rem; font-family: inherit;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .form-input:focus {
+            outline: none; border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+        select.form-input { appearance: auto; }
+
+        /* ── Alerts ──────────────────────────────────────────────────────────── */
+        .alert {
+            padding: 14px 18px; border-radius: var(--radius-sm);
+            margin-bottom: 20px; font-size: 0.88rem; font-weight: 500;
+        }
+        .alert-success { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2); }
+        .alert-error   { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(239,68,68,0.2); }
+        .alert-info    { background: var(--blue-bg);   color: var(--blue);   border: 1px solid rgba(59,130,246,0.2); }
+        .alert-warning { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(234,179,8,0.2); }
+
+        /* ── Step / Route indicator ──────────────────────────────────────────── */
+        .route-steps {
+            display: flex; align-items: center; gap: 0; overflow-x: auto;
+            padding: 12px 0;
+        }
+        .route-step {
+            display: flex; align-items: center; gap: 0; white-space: nowrap;
+        }
+        .route-dot {
+            width: 28px; height: 28px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 700; border: 2px solid var(--border);
+            background: var(--bg); color: var(--text-dim); flex-shrink: 0;
+        }
+        .route-dot.passed  { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .route-dot.current { background: var(--green);  border-color: var(--green);  color: #fff; animation: pulse 2s infinite; }
+        .route-dot.upcoming{ background: var(--bg);     border-color: var(--border); color: var(--text-dim); }
+        .route-line {
+            width: 32px; height: 2px; flex-shrink: 0;
+        }
+        .route-line.passed  { background: var(--accent); }
+        .route-line.upcoming{ background: var(--border); }
+        .route-name {
+            font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; text-align: center;
+        }
+        .route-step-wrap { display: flex; flex-direction: column; align-items: center; }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+        }
+
+        /* ── Section titles ──────────────────────────────────────────────────── */
+        .section-title {
+            font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 20px;
+        }
+        .section-sub {
+            font-size: 0.95rem; font-weight: 600; color: var(--text); margin: 20px 0 12px;
+        }
+
+        /* ── Empty state ─────────────────────────────────────────────────────── */
+        .empty {
+            color: var(--text-dim); font-style: italic; padding: 16px 0; font-size: 0.88rem;
+        }
+
+        /* ── Grid ────────────────────────────────────────────────────────────── */
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+
+        /* ── Inline form ─────────────────────────────────────────────────────── */
+        .inline-form { display: inline; }
+
+        /* ── Stat card ───────────────────────────────────────────────────────── */
+        .stat-card {
+            text-align: center; padding: 20px;
+        }
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: #fff; }
+        .stat-label { font-size: 0.8rem; color: var(--text-dim); margin-top: 4px; }
+
+        /* ── Footer ──────────────────────────────────────────────────────────── */
+        .footer {
+            text-align: center; padding: 24px;
+            font-size: 0.78rem; color: var(--text-dim);
+            border-top: 1px solid var(--border);
+        }
+
+        /* ── Responsive ──────────────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .navbar { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+            .navbar-links { gap: 12px; }
+            .main-content { padding: 20px 16px; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+
+        /* ── Errorlist (Django form errors) ──────────────────────────────────── */
+        .errorlist {
+            list-style: none; padding: 0; margin: 4px 0 0;
+            font-size: 0.78rem; color: var(--red);
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="{% url 'landing_page_view' %}" class="navbar-brand">
+            <span>🚗</span> Carpool
+        </a>
+
+        <div class="navbar-links">
+            {% if user.is_authenticated %}
+                {% if user.role == 'driver' %}
+                    <a href="{% url 'driver_dashboard_page' %}">Dashboard</a>
+                {% elif user.role == 'passenger' %}
+                    <a href="{% url 'passenger_dashboard' %}">Dashboard</a>
+                {% elif user.role == 'admin' %}
+                    <a href="{% url 'admin_dashboard' %}">Dashboard</a>
+                {% endif %}
+            {% else %}
+                <a href="{% url 'session_login_page' %}">Login</a>
+                <a href="{% url 'user_signup' %}">Sign Up</a>
+            {% endif %}
+        </div>
+
+        <div class="navbar-user">
+            {% if user.is_authenticated %}
+                <strong>{{ user.first_name }} {{ user.last_name }}</strong>
+                <span class="badge badge-{{ user.role }}">{{ user.role }}</span>
+                {% if user.role == 'passenger' %}
+                    <span class="wallet-badge">₹{{ user.wallet_balance }}</span>
+                {% endif %}
+                <a href="{% url 'session_logout' %}" class="btn-logout">Logout</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Flash messages -->
+    {% if messages %}
+    <div class="main-content" style="padding-bottom:0;">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Page content -->
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Carpool &copy; 2026 — Node-based Carpooling System
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

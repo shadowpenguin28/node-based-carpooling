@@ -1,67 +1,206 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
+{% block title %}Passenger Dashboard — Carpool{% endblock %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>Passenger Dashboard - Carpool</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            padding: 40px;
-            background: #f0f4f8;
-            color: #1a1a2e;
-        }
+{% block content %}
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% else %}
 
-        h1 {
-            font-size: 2rem;
-        }
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:28px;">
+    <h1 class="section-title" style="margin-bottom:0;">🧳 Passenger Dashboard</h1>
+    <span style="color:var(--text-dim); font-size:0.9rem;">Welcome, <strong style="color:#fff;">{{ passenger_name }}</strong></span>
+</div>
 
-        h2 {
-            font-size: 1.5rem;
-            margin-top: 30px;
-        }
-
-        .card {
-            background: white;
-            padding: 24px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-
-        .card p {
-            margin-bottom: 10px;
-            color: #4b5563;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-            font-size: 0.85rem;
-            background: #e0f2fe;
-            color: #0284c7;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>Welcome, {{ passenger_name }}</h1>
-    {% if error %}
-    <p style="color: red;">{{ error }}</p>
-    {% endif %}
-
-    <h2>Your Carpool Requests</h2>
-    {% for req in carpool_requests %}
-    <div class="card">
-        <p><strong>From:</strong> {{ req.pickup.name }} &nbsp;&rarr;&nbsp; <strong>To:</strong> {{ req.drop.name }}</p>
-        <p>Status: <span class="status">{{ req.status|title }}</span></p>
-        <p style="font-size: 0.85rem; color: #9ca3af;">Requested on {{ req.created_at|date:"M d, Y H:i" }}</p>
+<!-- ── Wallet + Top Up row ──────────────────────────────────────────── -->
+<div class="grid-2" style="margin-bottom:28px;">
+    <div class="card stat-card">
+        <div class="stat-label">Wallet Balance</div>
+        <div class="stat-value" style="color:var(--green);">₹{{ wallet_balance }}</div>
     </div>
-    {% empty %}
-    <p>You have no active or past requests.</p>
-    {% endfor %}
-</body>
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:12px;">💰 Top Up Wallet</h3>
+        <form method="POST" action="{% url 'page_topup_wallet' %}" style="display:flex; gap:10px; align-items:flex-end;">
+            {% csrf_token %}
+            <div class="form-group" style="flex:1; margin-bottom:0;">
+                <label for="amount">Amount (₹)</label>
+                <input type="number" name="amount" id="amount" class="form-input" min="1" step="1" placeholder="100" required>
+            </div>
+            <button type="submit" class="btn btn-success" style="height:42px;">Add Funds</button>
+        </form>
+    </div>
+</div>
 
-</html>
+<!-- ══════════════════════════════════════════════════════════════════════
+     REQUEST A RIDE
+     ════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-bottom:28px;">
+    <h2 class="card-title" style="margin-bottom:16px;">🚕 Request a Ride</h2>
+    <p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:16px;">
+        Select your pickup and drop-off nodes. Drivers with matching routes will be able to send you fare offers.
+    </p>
+    <form method="POST" action="{% url 'page_create_request' %}" style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        {% csrf_token %}
+        <div class="form-group" style="flex:1; min-width:180px; margin-bottom:0;">
+            <label for="pickup">Pickup Node</label>
+            <select name="pickup" id="pickup" class="form-input" required>
+                <option value="">Select pickup…</option>
+                {% for node in nodes %}
+                <option value="{{ node.id }}">{{ node.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="flex:1; min-width:180px; margin-bottom:0;">
+            <label for="drop">Drop-off Node</label>
+            <select name="drop" id="drop" class="form-input" required>
+                <option value="">Select drop-off…</option>
+                {% for node in nodes %}
+                <option value="{{ node.id }}">{{ node.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="height:42px;">Request Ride</button>
+    </form>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     CARPOOL REQUESTS WITH OFFERS — PROMINENT SECTION
+     ════════════════════════════════════════════════════════════════════ -->
+<h2 class="section-title">📋 Your Carpool Requests</h2>
+<p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:16px;">
+    After you request a ride, drivers with matching routes will send you offers. Accept an offer to join their trip!
+</p>
+
+{% for req in carpool_requests %}
+<div class="card" {% if req.offers and req.status == 'pending' %}style="border-color: rgba(34,197,94,0.3);"{% endif %}>
+    <div class="card-header">
+        <div>
+            <span class="card-title">{{ req.pickup }} → {{ req.drop }}</span>
+            <span class="badge badge-{{ req.status }}" style="margin-left:8px;">{{ req.status|upper }}</span>
+            {% if req.offers and req.status == 'pending' %}
+                <span class="badge badge-active" style="margin-left:4px;">{{ req.offers|length }} offer{{ req.offers|length|pluralize }}</span>
+            {% endif %}
+        </div>
+        <div style="display:flex; gap:8px;">
+            {% if req.status == 'pending' %}
+            <form method="POST" action="{% url 'page_cancel_request' cr_id=req.id %}" class="inline-form">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    <p style="font-size:0.82rem; color:var(--text-dim);">Requested on {{ req.created_at|date:"M d, Y" }}</p>
+
+    {% if req.offers %}
+    <h4 class="section-sub" style="margin-top:14px;">🚗 Driver Offers</h4>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Driver</th><th>Trip</th><th>Fare</th><th>Detour</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for o in req.offers %}
+            <tr{% if o.status == 'pending' and req.status == 'pending' %} style="background:rgba(34,197,94,0.04);"{% endif %}>
+                <td><strong>{{ o.driver }}</strong></td>
+                <td style="color:var(--text-dim);">#{{ o.trip_id }}</td>
+                <td style="color:var(--green);">₹{{ o.fare }}</td>
+                <td>+{{ o.detour }} hops</td>
+                <td><span class="badge badge-{{ o.status }}">{{ o.status }}</span></td>
+                <td>
+                    {% if o.status == 'pending' and req.status == 'pending' %}
+                    <form method="POST" action="{% url 'page_accept_offer' req_id=req.id offer_id=o.id %}" class="inline-form">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm">✓ Accept Offer</button>
+                    </form>
+                    {% elif o.status == 'accepted' %}
+                    <span style="color:var(--green); font-size:0.82rem;">✓ Accepted</span>
+                    {% elif o.status == 'rejected' %}
+                    <span style="color:var(--text-dim); font-size:0.82rem;">Rejected</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif req.status == 'pending' %}
+    <p class="empty" style="margin-top:12px;">⏳ Waiting for driver offers…</p>
+    {% endif %}
+</div>
+{% empty %}
+<p class="empty">No carpool requests yet. Request a ride above!</p>
+{% endfor %}
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     ACTIVE TRIPS — LIVE TRACKING
+     ════════════════════════════════════════════════════════════════════ -->
+{% if active_trips %}
+<h2 class="section-title" style="margin-top:28px;">🚗 Your Active Trips</h2>
+{% for trip in active_trips %}
+<div class="card" style="border-color: rgba(99,102,241,0.3);">
+    <div class="card-header">
+        <span class="card-title">Trip #{{ trip.trip_id }}</span>
+        <div>
+            <span class="badge badge-{{ trip.status }}">{{ trip.status|upper }}</span>
+            <span class="badge badge-{{ trip.boarding_status }}" style="margin-left:4px;">{{ trip.boarding_status }}</span>
+        </div>
+    </div>
+    <p style="font-size:0.88rem; color:var(--text-dim); margin-bottom:8px;">
+        🚘 Driver: <strong style="color:#fff;">{{ trip.driver }}</strong>
+        &nbsp;·&nbsp; {{ trip.pickup }} → {{ trip.drop }}
+        {% if trip.fare %}&nbsp;·&nbsp; Fare: <strong style="color:var(--green);">₹{{ trip.fare }}</strong>{% endif %}
+    </p>
+    <!-- Route -->
+    <div class="route-steps">
+        {% for node in trip.route %}
+        <div class="route-step">
+            <div class="route-step-wrap">
+                <div class="route-dot {% if node.is_current %}current{% elif node.is_passed %}passed{% else %}upcoming{% endif %}">
+                    {% if node.is_current %}📍{% elif node.is_passed %}✓{% endif %}
+                </div>
+                <div class="route-name">{{ node.name }}</div>
+            </div>
+        </div>
+        {% if not forloop.last %}
+        <div class="route-line {% if node.is_passed %}passed{% else %}upcoming{% endif %}"></div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     TRANSACTION HISTORY
+     ════════════════════════════════════════════════════════════════════ -->
+<h2 class="section-title" style="margin-top:28px;">💳 Transaction History</h2>
+{% if transactions %}
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Type</th><th>Amount</th><th>Trip</th><th>Date</th></tr></thead>
+            <tbody>
+            {% for t in transactions %}
+            <tr>
+                <td>
+                    {% if t.type == 'top_up' %}<span class="badge badge-active">Top Up</span>
+                    {% elif t.type == 'fare_deduction' %}<span class="badge badge-cancelled">Fare</span>
+                    {% elif t.type == 'driver_earning' %}<span class="badge badge-planned">Earning</span>
+                    {% else %}<span class="badge">{{ t.type }}</span>
+                    {% endif %}
+                </td>
+                <td style="{% if t.type == 'top_up' %}color:var(--green){% elif t.type == 'fare_deduction' %}color:var(--red){% endif %}">
+                    {% if t.type == 'top_up' %}+{% elif t.type == 'fare_deduction' %}-{% endif %}₹{{ t.amount }}
+                </td>
+                <td>{% if t.trip %}#{{ t.trip.id }}{% else %}—{% endif %}</td>
+                <td style="color:var(--text-dim);">{{ t.created_at|date:"M d, Y H:i" }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<p class="empty">No transactions yet.</p>
+{% endif %}
+
+{% endif %}
+{% endblock %}

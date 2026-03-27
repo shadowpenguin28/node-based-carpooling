@@ -77,16 +77,21 @@ def calculate_detour(trip: Trip, pickup, drop):
     if path_pickup_to_drop is None:
         return None
 
-    pickup_neighbours = set(graph.nodes_in_n_hops(pickup, 2))
-    drop_neighbours = set(graph.nodes_in_n_hops(drop, 2))
+    # Depart candidates: route nodes from which the driver CAN REACH the pickup
+    depart_candidates = []
+    for i, node in enumerate(remaining):
+        if node == pickup:
+            depart_candidates.append((i, node))
+        else:
+            reachable = graph.nodes_in_n_hops(node, 2)
+            if pickup in reachable:
+                depart_candidates.append((i, node))
 
-    depart_candidates = [
-        (i, node) for i, node in enumerate(remaining)
-        if node in pickup_neighbours or node == pickup
-    ]
+    # Rejoin candidates: route nodes that the drop CAN REACH
+    drop_reachable = graph.nodes_in_n_hops(drop, 2)
     rejoin_candidates = [
         (j, node) for j, node in enumerate(remaining)
-        if node in drop_neighbours or node == drop
+        if node in drop_reachable or node == drop
     ]
 
     best = None
@@ -183,6 +188,10 @@ def calculate_fare(trip: Trip, passenger_pickup, passenger_drop,
         p_end = next(
             (i for i, n in enumerate(new_route) if n.id == tp.drop.id), None
         )
+        if p_start is None and tp.boarding_status == TripPassenger.BoardingStatus.BOARDED:
+            p_start = 0
+        if p_start is None and tp.boarding_status == TripPassenger.BoardingStatus.PENDING:
+            p_start = 0
         if p_start is not None and p_end is not None and p_start < p_end:
             segments.append((p_start, p_end))
 

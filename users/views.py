@@ -15,7 +15,24 @@ from allauth.core.exceptions import ImmediateHttpResponse
 from .forms import UserSignupForm
 
 def login_page_view(request):
+    if request.method == 'POST':
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        user = authenticate(request, email=email, password=password)
+        if user is not None:
+            login(request, user, backend='users.backends.EmailAuthenticationBackend')
+            if user.role == 'driver':
+                return redirect('driver_dashboard_page')
+            elif user.role == 'passenger':
+                return redirect('passenger_dashboard')
+            elif user.role == 'admin':
+                return redirect('admin_dashboard')
+            return redirect('landing_page_view')
+        return render(request, 'users/login.html', {'error': 'Invalid email or password'})
+
     error = request.GET.get('error')
+    if error == 'no_account':
+        error = 'No account found for this Google address. Please sign up first.'
     return render(request, 'users/login.html', {'error': error})
 
 

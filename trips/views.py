@@ -106,8 +106,40 @@ def advance_trip_view(request, trip_id):
                 amount=total_earnings,
             )
 
+        # Total earnings including passengers already dropped off during the trip
+        from django.db.models import Sum
+        grand_total = Transaction.objects.filter(
+            trip=trip, user=trip.driver, type='driver_earning'
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
         trip.complete_trip()
-        return Response(data={"message": "Trip completed!"}, status=status.HTTP_200_OK)
+        return Response(data={"message": f"Trip completed! Total earned: ₹{grand_total}"}, status=status.HTTP_200_OK)
+
+    # Check: must board all pending passengers whose pickup is current node
+    unboarded = TripPassenger.objects.filter(
+        trip=trip,
+        pickup=trip.current_node,
+        boarding_status=TripPassenger.BoardingStatus.PENDING,
+    )
+    if unboarded.exists():
+        names = ', '.join(f"{tp.passenger.first_name} {tp.passenger.last_name}" for tp in unboarded)
+        return Response(
+            data={"errors": f"Must board passengers at {trip.current_node.name} first: {names}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Check: must drop off all boarded passengers whose drop is current node
+    undropped = TripPassenger.objects.filter(
+        trip=trip,
+        drop=trip.current_node,
+        boarding_status=TripPassenger.BoardingStatus.BOARDED,
+    )
+    if undropped.exists():
+        names = ', '.join(f"{tp.passenger.first_name} {tp.passenger.last_name}" for tp in undropped)
+        return Response(
+            data={"errors": f"Must drop off passengers at {trip.current_node.name} first: {names}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     next_node = trip.advance_to_next_node()
     return Response(data={"message": f"Advanced to {next_node.name}"}, status=status.HTTP_200_OK)
@@ -183,6 +215,17 @@ def wallet_transactions(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsPassenger])
 def create_carpool_request(request):
+    # Check if passenger is already on an active trip
+    active_trip = TripPassenger.objects.filter(
+        passenger=request.user,
+        boarding_status__in=[TripPassenger.BoardingStatus.PENDING, TripPassenger.BoardingStatus.BOARDED],
+        trip__status__in=['planned', 'active'],
+    ).exists()
+    if active_trip:
+        return Response(
+            data={"errors": "You are already on an active trip. Complete it before requesting a new ride."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     serializer = CarPoolRequestSerializer(data=request.data)
     if serializer.is_valid():
         data = serializer.validated_data
@@ -607,6 +650,9 @@ def dropoff_passenger(request, trip_id, passenger_id):
 # ── SSR pages ────────────────────────────────────────────────────────────────
 
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.shortcuts import redirect
+from core.models import Node
 
 
 @login_required
@@ -637,6 +683,7 @@ def driver_dashboard_page(request):
         ]
         passengers = [
             {
+                'id': tp.passenger.id,
                 'name': f"{tp.passenger.first_name} {tp.passenger.last_name}",
                 'boarding_status': tp.boarding_status,
                 'pickup': tp.pickup.name,
@@ -663,16 +710,18 @@ def driver_dashboard_page(request):
                 if trip not in services.find_matching_trips(cr.pickup, cr.drop):
                     continue
                 detour_info = services.calculate_detour(trip, cr.pickup, cr.drop)
+                if detour_info is None:
+                    continue  # skip unfeasible matches
                 fare = services.calculate_fare(
                     trip, cr.pickup, cr.drop, detour_info, PRICE_PER_HOP, BASE_FEE
-                ) if detour_info else None
+                )
                 matching_requests.append({
                     'request_id': cr.id,
                     'passenger': f"{cr.passenger.first_name} {cr.passenger.last_name}",
                     'pickup': cr.pickup.name,
                     'drop': cr.drop.name,
-                    'detour': detour_info['detour'] if detour_info else '?',
-                    'fare': fare if fare else '?',
+                    'detour': detour_info['detour'],
+                    'fare': fare,
                 })
 
         trips_data.append({
@@ -689,9 +738,50 @@ def driver_dashboard_page(request):
             'matching_requests': matching_requests,
         })
 
+    # Build a global pending requests section (across all driver's trips)
+    all_pending = CarPoolRequest.objects.filter(status='pending')
+    active_driver_trips = Trip.objects.filter(
+        driver=request.user, status__in=['planned', 'active']
+    )
+    pending_requests_data = []
+    seen_cr_ids = set()
+    for cr in all_pending:
+        for trip in active_driver_trips:
+            if not trip.can_board_more:
+                continue
+            if trip not in services.find_matching_trips(cr.pickup, cr.drop):
+                continue
+            # Already offered?
+            already_offered = DriverOffer.objects.filter(
+                carpool_request=cr, driver=request.user
+            ).exists()
+            detour_info = services.calculate_detour(trip, cr.pickup, cr.drop)
+            if detour_info is None:
+                continue  # skip unfeasible matches
+            fare = services.calculate_fare(
+                trip, cr.pickup, cr.drop, detour_info, PRICE_PER_HOP, BASE_FEE
+            )
+            key = (cr.id, trip.id)
+            if key not in seen_cr_ids:
+                seen_cr_ids.add(key)
+                pending_requests_data.append({
+                    'request_id': cr.id,
+                    'passenger': f"{cr.passenger.first_name} {cr.passenger.last_name}",
+                    'pickup': cr.pickup.name,
+                    'drop': cr.drop.name,
+                    'trip_id': trip.id,
+                    'trip_route': f"{trip.start_node.name} → {trip.end_node.name}",
+                    'detour': detour_info['detour'],
+                    'fare': fare,
+                    'already_offered': already_offered,
+                })
+
+    nodes = Node.objects.all()
     return render(request, 'trips/driver_dashboard.html', {
         'driver_name': f"{request.user.first_name} {request.user.last_name}",
         'trips': trips_data,
+        'nodes': nodes,
+        'pending_requests': pending_requests_data,
     })
 
 
@@ -700,11 +790,73 @@ def passenger_dashboard_page(request):
     if request.user.role != 'passenger':
         return render(request, 'trips/passenger_dashboard.html', {'error': 'Only passengers can access this page'})
 
+    carpool_requests = CarPoolRequest.objects.filter(passenger=request.user).order_by('-created_at')
+
+    # Enrich each request with its offers
+    requests_data = []
+    for cr in carpool_requests:
+        offers = DriverOffer.objects.filter(carpool_request=cr)
+        requests_data.append({
+            'id': cr.id,
+            'pickup': cr.pickup.name,
+            'drop': cr.drop.name,
+            'status': cr.status,
+            'created_at': cr.created_at,
+            'offers': [
+                {
+                    'id': o.id,
+                    'driver': f"{o.driver.first_name} {o.driver.last_name}",
+                    'trip_id': o.trip.id,
+                    'fare': o.fare,
+                    'detour': o.detour,
+                    'status': o.status,
+                }
+                for o in offers
+            ],
+        })
+
+    # Active trips for this passenger
+    active_trips = TripPassenger.objects.filter(
+        passenger=request.user,
+        boarding_status__in=['pending', 'boarded'],
+    ).select_related('trip', 'trip__driver', 'pickup', 'drop')
+    active_trips_data = []
+    for tp in active_trips:
+        trip = tp.trip
+        route_nodes = TripNode.objects.filter(trip=trip).order_by('order')
+        current_order = None
+        if trip.current_node:
+            try:
+                current_order = TripNode.objects.get(trip=trip, node=trip.current_node).order
+            except TripNode.DoesNotExist:
+                pass
+        route = [
+            {
+                'name': tn.node.name,
+                'is_current': current_order is not None and tn.order == current_order,
+                'is_passed': current_order is not None and tn.order < current_order,
+            }
+            for tn in route_nodes
+        ]
+        active_trips_data.append({
+            'trip_id': trip.id,
+            'driver': f"{trip.driver.first_name} {trip.driver.last_name}",
+            'status': trip.status,
+            'boarding_status': tp.boarding_status,
+            'pickup': tp.pickup.name,
+            'drop': tp.drop.name,
+            'fare': tp.fare,
+            'route': route,
+        })
+
+    nodes = Node.objects.all()
     return render(request, 'trips/passenger_dashboard.html', {
         'passenger_name': f"{request.user.first_name} {request.user.last_name}",
         'wallet_balance': request.user.wallet_balance,
-        'carpool_requests': CarPoolRequest.objects.filter(passenger=request.user).order_by('-created_at'),
+        'carpool_requests': requests_data,
+        'active_trips': active_trips_data,
         'transactions': Transaction.objects.filter(user=request.user).order_by('-created_at'),
+        'nodes': nodes,
     })
 
 
@@ -713,7 +865,353 @@ def admin_dashboard_page(request):
     if request.user.role != 'admin':
         return render(request, 'trips/admin_dashboard.html', {'error': 'Only admins can access this page'})
 
+    from core.models import ServiceConfig
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    all_trips = Trip.objects.all().order_by('-created_at')
+    trips_data = []
+    for trip in all_trips:
+        passengers = [
+            {
+                'name': f"{tp.passenger.first_name} {tp.passenger.last_name}",
+                'boarding_status': tp.boarding_status,
+                'pickup': tp.pickup.name,
+                'drop': tp.drop.name,
+                'fare': tp.fare,
+            }
+            for tp in TripPassenger.objects.filter(trip=trip)
+        ]
+        trips_data.append({
+            'id': trip.id,
+            'driver': f"{trip.driver.first_name} {trip.driver.last_name}" if trip.driver else "—",
+            'status': trip.status,
+            'start_node': trip.start_node.name,
+            'end_node': trip.end_node.name,
+            'current_node': trip.current_node.name if trip.current_node else None,
+            'passenger_count': trip.active_passenger_count,
+            'max_passengers': trip.max_passengers,
+            'created_at': trip.created_at,
+            'passengers': passengers,
+        })
+
+    service_active = ServiceConfig.is_service_active()
+    all_users = User.objects.all().order_by('role', 'first_name')
+
     return render(request, 'trips/admin_dashboard.html', {
         'admin_name': f"{request.user.first_name} {request.user.last_name}",
-        'active_trips': Trip.objects.filter(status='active').order_by('-created_at'),
+        'trips': trips_data,
+        'active_count': Trip.objects.filter(status='active').count(),
+        'planned_count': Trip.objects.filter(status='planned').count(),
+        'completed_count': Trip.objects.filter(status='completed').count(),
+        'total_users': User.objects.count(),
+        'service_active': service_active,
+        'users': all_users,
     })
+
+
+# ── SSR action views (form POST handlers) ───────────────────────────────────
+
+@login_required
+def create_trip_page(request):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    start_id = request.POST.get('start_node')
+    end_id = request.POST.get('end_node')
+    max_p = request.POST.get('max_passengers')
+    try:
+        start = Node.objects.get(pk=start_id)
+        end = Node.objects.get(pk=end_id)
+        trip = services.create_trip(request.user, start, end, int(max_p))
+        if trip:
+            messages.success(request, f'Trip #{trip.id} created: {start.name} → {end.name}')
+        else:
+            messages.error(request, 'Could not create trip (check route exists)')
+    except Exception as e:
+        messages.error(request, f'Error creating trip: {e}')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def start_trip_page(request, trip_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    try:
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+        if trip.status != Trip.Status.PLANNED:
+            messages.error(request, 'Trip cannot be started')
+        else:
+            trip.start_trip()
+            messages.success(request, f'Trip #{trip.id} started!')
+    except Trip.DoesNotExist:
+        messages.error(request, 'Trip not found')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def advance_trip_page(request, trip_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    try:
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+
+        if trip.current_node == trip.end_node:
+            # Complete logic — handle any remaining passengers still on board
+            remaining_passengers = TripPassenger.objects.filter(
+                trip=trip,
+                boarding_status__in=[TripPassenger.BoardingStatus.PENDING, TripPassenger.BoardingStatus.BOARDED],
+            )
+            completion_earnings = Decimal('0')
+            for tp in remaining_passengers:
+                if tp.fare:
+                    fare = Decimal(str(tp.fare))
+                    tp.passenger.wallet_balance -= fare
+                    tp.passenger.save()
+                    completion_earnings += fare
+                    Transaction.objects.create(user=tp.passenger, trip=trip, type='fare_deduction', amount=fare)
+                    tp.drop_off()
+            if completion_earnings > 0:
+                trip.driver.wallet_balance += completion_earnings
+                trip.driver.save()
+                Transaction.objects.create(user=trip.driver, trip=trip, type='driver_earning', amount=completion_earnings)
+
+            # Calculate total earnings (including passengers already dropped off)
+            from django.db.models import Sum
+            already_earned = Transaction.objects.filter(
+                trip=trip, user=trip.driver, type='driver_earning'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+            trip.complete_trip()
+            messages.success(request, f'Trip #{trip.id} completed! Total earned: ₹{already_earned}')
+        else:
+            # Check: must board all pending passengers whose pickup is current node
+            unboarded = TripPassenger.objects.filter(
+                trip=trip,
+                pickup=trip.current_node,
+                boarding_status=TripPassenger.BoardingStatus.PENDING,
+            )
+            if unboarded.exists():
+                names = ', '.join(f"{tp.passenger.first_name}" for tp in unboarded)
+                messages.error(request, f'Must board passengers at {trip.current_node.name} first: {names}')
+                return redirect('driver_dashboard_page')
+
+            # Check: must drop off all boarded passengers whose drop is current node
+            undropped = TripPassenger.objects.filter(
+                trip=trip,
+                drop=trip.current_node,
+                boarding_status=TripPassenger.BoardingStatus.BOARDED,
+            )
+            if undropped.exists():
+                names = ', '.join(f"{tp.passenger.first_name}" for tp in undropped)
+                messages.error(request, f'Must drop off passengers at {trip.current_node.name} first: {names}')
+                return redirect('driver_dashboard_page')
+
+            next_node = trip.advance_to_next_node()
+            messages.success(request, f'Advanced to {next_node.name}')
+    except Trip.DoesNotExist:
+        messages.error(request, 'Trip not found')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def cancel_trip_page(request, trip_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    try:
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+        if trip.status != Trip.Status.PLANNED:
+            messages.error(request, 'Trip cannot be cancelled')
+        else:
+            trip.cancel_trip()
+            messages.success(request, f'Trip #{trip.id} cancelled')
+    except Trip.DoesNotExist:
+        messages.error(request, 'Trip not found')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def send_offer_page(request, req_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    trip_id = request.POST.get('trip_id')
+    try:
+        cr = CarPoolRequest.objects.get(pk=req_id, status='pending')
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+        if DriverOffer.objects.filter(carpool_request=cr, driver=request.user).exists():
+            messages.error(request, 'You already offered for this request')
+            return redirect('driver_dashboard_page')
+        detour_info = services.calculate_detour(trip, cr.pickup, cr.drop)
+        if detour_info is None:
+            messages.error(request, 'Cannot reach pickup/drop from your route')
+            return redirect('driver_dashboard_page')
+        fare = services.calculate_fare(trip, cr.pickup, cr.drop, detour_info, PRICE_PER_HOP, BASE_FEE)
+        offer = DriverOffer.objects.create(
+            driver=request.user, carpool_request=cr, trip=trip,
+            fare=fare, detour=detour_info['detour'],
+        )
+        messages.success(request, f'Offer sent! Fare: ₹{fare}, Detour: +{offer.detour} hops')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def board_passenger_page(request, trip_id, passenger_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    try:
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+        tp = TripPassenger.objects.get(trip=trip, passenger_id=passenger_id)
+        if tp.boarding_status != TripPassenger.BoardingStatus.PENDING:
+            messages.error(request, 'Passenger cannot be boarded')
+        elif trip.current_node != tp.pickup:
+            messages.error(request, f'Must be at {tp.pickup.name} to board this passenger')
+        else:
+            tp.board()
+            messages.success(request, f'{tp.passenger.first_name} boarded!')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def dropoff_passenger_page(request, trip_id, passenger_id):
+    if request.method != 'POST' or request.user.role != 'driver':
+        return redirect('driver_dashboard_page')
+    try:
+        trip = Trip.objects.get(pk=trip_id, driver=request.user)
+        tp = TripPassenger.objects.get(trip=trip, passenger_id=passenger_id)
+        if tp.boarding_status != TripPassenger.BoardingStatus.BOARDED:
+            messages.error(request, 'Passenger is not boarded')
+        elif trip.current_node != tp.drop:
+            messages.error(request, f'Must be at {tp.drop.name} to drop off')
+        else:
+            final_fare = services.calculate_final_fare(trip, tp, PRICE_PER_HOP, BASE_FEE)
+            if final_fare is None:
+                messages.error(request, 'Could not calculate fare')
+                return redirect('driver_dashboard_page')
+            passenger = tp.passenger
+            if Decimal(str(final_fare)) > passenger.wallet_balance:
+                messages.error(request, 'Passenger has insufficient balance')
+                return redirect('driver_dashboard_page')
+            passenger.wallet_balance -= Decimal(str(final_fare))
+            passenger.save()
+            Transaction.objects.create(user=passenger, trip=trip, type='fare_deduction', amount=Decimal(str(final_fare)))
+            trip.driver.wallet_balance += Decimal(str(final_fare))
+            trip.driver.save()
+            Transaction.objects.create(user=trip.driver, trip=trip, type='driver_earning', amount=Decimal(str(final_fare)))
+            tp.fare = final_fare
+            tp.save()
+            tp.drop_off()
+            messages.success(request, f'{passenger.first_name} dropped off! Fare: ₹{final_fare}')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('driver_dashboard_page')
+
+
+@login_required
+def topup_wallet_page(request):
+    if request.method != 'POST' or request.user.role != 'passenger':
+        return redirect('passenger_dashboard')
+    amount = request.POST.get('amount')
+    try:
+        amount = Decimal(str(amount))
+        if amount <= 0:
+            raise ValueError('Amount must be positive')
+        request.user.wallet_balance += amount
+        request.user.save()
+        Transaction.objects.create(user=request.user, trip=None, type='top_up', amount=amount)
+        messages.success(request, f'₹{amount} added to wallet')
+    except Exception as e:
+        messages.error(request, f'Invalid amount: {e}')
+    return redirect('passenger_dashboard')
+
+
+@login_required
+def create_request_page(request):
+    if request.method != 'POST' or request.user.role != 'passenger':
+        return redirect('passenger_dashboard')
+    pickup_id = request.POST.get('pickup')
+    drop_id = request.POST.get('drop')
+    # Check if passenger is already on an active trip
+    active_trip = TripPassenger.objects.filter(
+        passenger=request.user,
+        boarding_status__in=[TripPassenger.BoardingStatus.PENDING, TripPassenger.BoardingStatus.BOARDED],
+        trip__status__in=['planned', 'active'],
+    ).exists()
+    if active_trip:
+        messages.error(request, 'You are already on an active trip. Complete it before requesting a new ride.')
+        return redirect('passenger_dashboard')
+    try:
+        pickup = Node.objects.get(pk=pickup_id)
+        drop = Node.objects.get(pk=drop_id)
+        if pickup == drop:
+            messages.error(request, 'Pickup and drop cannot be the same')
+            return redirect('passenger_dashboard')
+        CarPoolRequest.objects.create(passenger=request.user, pickup=pickup, drop=drop)
+        messages.success(request, f'Carpool request created: {pickup.name} → {drop.name}')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('passenger_dashboard')
+
+
+@login_required
+def accept_offer_page(request, req_id, offer_id):
+    if request.method != 'POST' or request.user.role != 'passenger':
+        return redirect('passenger_dashboard')
+    try:
+        cr = CarPoolRequest.objects.get(pk=req_id, passenger=request.user)
+        offer = DriverOffer.objects.get(pk=offer_id, carpool_request=cr)
+        if not offer.trip.can_board_more:
+            messages.error(request, 'Trip is full')
+            return redirect('passenger_dashboard')
+        if Decimal(str(offer.fare)) > request.user.wallet_balance:
+            messages.error(request, 'Insufficient wallet balance')
+            return redirect('passenger_dashboard')
+        offer.status = DriverOffer.Status.ACCEPTED
+        offer.save()
+        cr.status = CarPoolRequest.Status.MATCHED
+        cr.save()
+        DriverOffer.objects.filter(carpool_request=cr, status='pending').exclude(pk=offer.pk).update(status='rejected')
+        detour_info = services.calculate_detour(offer.trip, cr.pickup, cr.drop)
+        if detour_info:
+            services.apply_detour_to_trip(offer.trip, detour_info)
+        services.add_passenger_to_trip(
+            passenger=cr.passenger, trip=offer.trip,
+            pickup_node=cr.pickup, drop_node=cr.drop, fare=offer.fare,
+        )
+        messages.success(request, f'Offer accepted! Driver: {offer.driver.first_name}, Fare: ₹{offer.fare}')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('passenger_dashboard')
+
+
+@login_required
+def cancel_request_page(request, cr_id):
+    if request.method != 'POST' or request.user.role != 'passenger':
+        return redirect('passenger_dashboard')
+    try:
+        cr = CarPoolRequest.objects.get(pk=cr_id, passenger=request.user)
+        if cr.status == 'matched':
+            messages.error(request, 'Cannot cancel a matched request')
+        elif cr.status == 'cancelled':
+            messages.error(request, 'Already cancelled')
+        else:
+            cr.status = CarPoolRequest.Status.CANCELLED
+            cr.save()
+            messages.success(request, 'Carpool request cancelled')
+    except Exception as e:
+        messages.error(request, f'Error: {e}')
+    return redirect('passenger_dashboard')
+
+
+@login_required
+def toggle_service_page(request):
+    if request.method != 'POST' or request.user.role != 'admin':
+        return redirect('admin_dashboard')
+    from core.models import ServiceConfig
+    config, _ = ServiceConfig.objects.get_or_create(pk=1)
+    config.is_active = not config.is_active
+    config.save()
+    state = "activated" if config.is_active else "suspended"
+    messages.success(request, f'Service {state}')
+    return redirect('admin_dashboard')

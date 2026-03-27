@@ -14,6 +14,8 @@ class ServiceActiveMiddleware:
         '/core/',
         '/trips/admin/',
         '/trips/api/admin/',
+        '/trips/admin_dashboard/',
+        '/trips/page/toggle-service/',
     ]
 
     def __init__(self, get_response):

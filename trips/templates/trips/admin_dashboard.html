@@ -1,68 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — Carpool{% endblock %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>Admin Dashboard - Carpool</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            padding: 40px;
-            background: #f0f4f8;
-            color: #1a1a2e;
-        }
+{% block content %}
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% else %}
 
-        h1 {
-            font-size: 2rem;
-        }
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:28px;">
+    <h1 class="section-title" style="margin-bottom:0;">⚙️ Admin Dashboard</h1>
+    <span style="color:var(--text-dim); font-size:0.9rem;">{{ admin_name }}</span>
+</div>
 
-        h2 {
-            font-size: 1.5rem;
-            margin-top: 30px;
-        }
-
-        .card {
-            background: white;
-            padding: 24px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-
-        .card p {
-            margin-bottom: 10px;
-            color: #4b5563;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-            font-size: 0.85rem;
-            background: #e0f2fe;
-            color: #0284c7;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>Admin Dashboard - {{ admin_name }}</h1>
-    {% if error %}
-    <p style="color: red;">{{ error }}</p>
-    {% endif %}
-
-    <h2>Active Trips</h2>
-    {% for trip in active_trips %}
-    <div class="card">
-        <p><strong>Driver:</strong> {{ trip.driver.first_name }} {{ trip.driver.last_name }}</p>
-        <p><strong>Route:</strong> {{ trip.start_node.name }} &nbsp;&rarr;&nbsp; {{ trip.end_node.name }}</p>
-        <p>Status: <span class="status">{{ trip.status|title }}</span></p>
-        <p style="font-size: 0.85rem; color: #9ca3af;">Created crossing {{ trip.created_at|date:"M d, Y H:i" }}</p>
+<!-- ── Stats Row ─────────────────────────────────────────────────────── -->
+<div class="grid-3" style="margin-bottom:28px;">
+    <div class="card stat-card">
+        <div class="stat-value" style="color:var(--green);">{{ active_count }}</div>
+        <div class="stat-label">Active Trips</div>
     </div>
-    {% empty %}
-    <p>No active trips right now.</p>
-    {% endfor %}
-</body>
+    <div class="card stat-card">
+        <div class="stat-value" style="color:var(--blue);">{{ planned_count }}</div>
+        <div class="stat-label">Planned Trips</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">{{ completed_count }}</div>
+        <div class="stat-label">Completed Trips</div>
+    </div>
+</div>
 
-</html>
+<!-- ── Service Toggle ────────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom:28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h3 class="card-title" style="margin-bottom:4px;">🔧 Service Status</h3>
+        <p style="font-size:0.88rem; color:var(--text-dim);">
+            The carpooling service is currently
+            {% if service_active %}
+            <span class="badge badge-active">ACTIVE</span>
+            {% else %}
+            <span class="badge badge-cancelled">SUSPENDED</span>
+            {% endif %}
+        </p>
+    </div>
+    <form method="POST" action="{% url 'page_toggle_service' %}">
+        {% csrf_token %}
+        {% if service_active %}
+        <button type="submit" class="btn btn-danger">⏸ Suspend Service</button>
+        {% else %}
+        <button type="submit" class="btn btn-success">▶ Activate Service</button>
+        {% endif %}
+    </form>
+</div>
+
+<!-- ── All Trips ─────────────────────────────────────────────────────── -->
+<h2 class="section-title">🗂 All Trips</h2>
+{% if trips %}
+{% for trip in trips %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <span class="card-title">Trip #{{ trip.id }}: {{ trip.start_node }} → {{ trip.end_node }}</span>
+            <span class="badge badge-{{ trip.status }}" style="margin-left:8px;">{{ trip.status|upper }}</span>
+        </div>
+        <div style="font-size:0.82rem; color:var(--text-dim);">
+            🚘 {{ trip.driver }} &nbsp;·&nbsp; 👥 {{ trip.passenger_count }}/{{ trip.max_passengers }}
+            {% if trip.current_node %}&nbsp;·&nbsp; 📍 {{ trip.current_node }}{% endif %}
+        </div>
+    </div>
+    {% if trip.passengers %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Passenger</th><th>Pickup</th><th>Drop</th><th>Status</th><th>Fare</th></tr></thead>
+            <tbody>
+            {% for p in trip.passengers %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.pickup }}</td>
+                <td>{{ p.drop }}</td>
+                <td><span class="badge badge-{{ p.boarding_status }}">{{ p.boarding_status }}</span></td>
+                <td>{% if p.fare %}₹{{ p.fare }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">No passengers.</p>
+    {% endif %}
+    <p style="font-size:0.78rem; color:var(--text-dim); margin-top:8px;">Created {{ trip.created_at|date:"M d, Y H:i" }}</p>
+</div>
+{% endfor %}
+{% else %}
+<p class="empty">No trips in the system.</p>
+{% endif %}
+
+<!-- ── All Users ─────────────────────────────────────────────────────── -->
+<h2 class="section-title" style="margin-top:28px;">👥 All Users ({{ total_users }})</h2>
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Wallet</th></tr></thead>
+            <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.first_name }} {{ u.last_name }}</td>
+                <td style="color:var(--text-dim);">{{ u.email }}</td>
+                <td><span class="badge badge-{% if u.role == 'admin' %}planned{% elif u.role == 'driver' %}active{% else %}pending{% endif %}">{{ u.role }}</span></td>
+                <td style="color:var(--text-dim);">{{ u.phone_number }}</td>
+                <td>₹{{ u.wallet_balance }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
