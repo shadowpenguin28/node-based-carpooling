@@ -1,7 +1,7 @@
 # pull official base image
 FROM python:3.13.12-slim
 # set working directory
-WORKDIR /usr/src/carpool
+WORKDIR /app
 
 # set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -15,9 +15,8 @@ RUN pip install -r requirements.txt
 RUN apt-get update && apt-get install -y netcat-traditional && rm -rf /var/lib/apt/lists/*
 
 COPY ./entrypoint.sh .
-RUN sed -i 's/\r$//g' /usr/src/carpool/entrypoint.sh
-RUN chmod +x /usr/src/carpool/entrypoint.sh
-
+RUN sed -i 's/\r$//g' /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 # copy project
 COPY . .
 
