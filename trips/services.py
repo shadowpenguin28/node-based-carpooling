@@ -48,27 +48,57 @@ def add_passenger_to_trip(passenger, trip: Trip, pickup_node, drop_node, fare=No
     tp.save()
     return tp
 
+# def find_matching_trips(pickup, drop):
+#     matching = []
+#     trips = Trip.objects.filter(status__in=['planned', 'active'])
 
+#     for trip in trips:
+#         if not trip.can_board_more:
+#             continue
+
+#         reachable = set()
+#         for node in trip.get_remaining_route():
+#             for n in graph.nodes_in_n_hops(node, 2):
+#                 reachable.add(n)
+
+#         if pickup in reachable and drop in reachable:
+#             matching.append(trip)
+
+#     return matching
+
+# New implementation
 def find_matching_trips(pickup, drop):
     matching = []
     trips = Trip.objects.filter(status__in=['planned', 'active'])
-
+    nodes_near_pickup = [node.id for node in graph.reverse_nodes_in_n_hops(pickup, 2)]
+    nodes_near_drop = [node.id for node in graph.reverse_nodes_in_n_hops(drop, 2)]
     for trip in trips:
-        if not trip.can_board_more:
+        current_node = TripNode.objects.filter(node=trip.current_node, trip=trip).first()
+        if not current_node:
             continue
+        current_node_order = current_node.order
+        # find the nodes which are in 'nodes_near_pickup' and on this trip
+        p_candidate = TripNode.objects.filter(
+            trip=trip, 
+            node_id__in = nodes_near_pickup, 
+            order__gte = current_node_order
+            ).order_by('order').first()
+        d_candidate = TripNode.objects.filter(
+            trip = trip,
+            node_id__in = nodes_near_drop,
+            order__gte = current_node_order
+        ).order_by('order').last()
 
-        reachable = set()
-        for node in trip.get_remaining_route():
-            for n in graph.nodes_in_n_hops(node, 2):
-                reachable.add(n)
-
-        if pickup in reachable and drop in reachable:
-            matching.append(trip)
-
+        #reject if there is no candidate was found and if pickup is after drop
+        if  (p_candidate is None or d_candidate is None) or (p_candidate.order >= d_candidate.order):
+            continue 
+        
+        matching.append(trip)
+    
     return matching
 
-
 def calculate_detour(trip: Trip, pickup, drop):
+
     remaining = trip.get_remaining_route()
     if len(remaining) < 2:
         return None
@@ -76,6 +106,18 @@ def calculate_detour(trip: Trip, pickup, drop):
     path_pickup_to_drop = graph.find_shortest_path(pickup, drop)
     if path_pickup_to_drop is None:
         return None
+
+    # Collect drop nodes for existing active passengers — these MUST stay on the route
+    protected_drops = set(
+        tp.drop
+        for tp in TripPassenger.objects.filter(
+            trip=trip,
+            boarding_status__in=[
+                TripPassenger.BoardingStatus.PENDING,
+                TripPassenger.BoardingStatus.BOARDED,
+            ],
+        )
+    )
 
     # Depart candidates: route nodes from which the driver CAN REACH the pickup
     depart_candidates = []
@@ -109,6 +151,20 @@ def calculate_detour(trip: Trip, pickup, drop):
             if path_from_drop is None:
                 continue
 
+            # Build the hypothetical new route for this (depart, rejoin) pair
+            candidate_route = (
+                remaining[:i + 1]
+                + path_to_pickup[1:]
+                + path_pickup_to_drop[1:]
+                + path_from_drop[1:]
+                + remaining[j + 1:]
+            )
+            candidate_nodes = set(candidate_route)
+
+            # Skip this pair if it removes any existing passenger's drop node
+            if not protected_drops.issubset(candidate_nodes):
+                continue
+
             new_hops = (
                 (len(path_to_pickup) - 1)
                 + (len(path_pickup_to_drop) - 1)
@@ -128,6 +184,7 @@ def calculate_detour(trip: Trip, pickup, drop):
                 }
 
     return best
+
 
 
 def build_new_route(remaining: list, detour_info: dict):

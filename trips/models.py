@@ -45,7 +45,6 @@ class Trip(models.Model):
             return [t.node for t in self.tripnode_set.all()]
         current_order = TripNode.objects.get(trip=self, node=self.current_node).order
         return [t.node for t in self.tripnode_set.filter(order__gte=current_order)]
-    
     def start_trip(self):
         self.status = self.Status.ACTIVE
         self.current_node = self.start_node

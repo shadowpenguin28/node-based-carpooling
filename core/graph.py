@@ -4,6 +4,9 @@ from collections import deque
 def get_neighbours(node: Node):
     return Node.objects.filter(incoming__source = node)
 
+def get_predecessors(node: Node):
+    return Node.objects.filter(outgoing__destination = node)
+
 def find_shortest_path(start_node: Node, end_node: Node):
     if start_node == end_node:
         return [start_node]
@@ -38,6 +41,20 @@ def nodes_in_n_hops(node: Node, n: int):
     
     return visited
 
+def reverse_nodes_in_n_hops(node: Node, n: int):
+    """Nodes from which 'node' is reachable within in n-hops"""
+    visited = {node}
+    queue = deque([(node, 0)])
+    while queue:
+        current, depth = queue.popleft()
+        if depth >= n:
+            continue
+        for pred in get_predecessors(current):
+            if pred not in visited:
+                visited.add(pred)
+                queue.append((pred, depth+1))
+    
+    return visited
 
 
     

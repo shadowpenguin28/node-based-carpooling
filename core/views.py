@@ -13,6 +13,13 @@ from .serializers import NodeSerializer, EdgeSerializer
 def landing_page_view(request):
     return render(request, 'core/index.html')
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_nodes_view(request):
+    nodes = Node.objects.all().order_by('id')
+    serializer = NodeSerializer(nodes, many=True)
+    return Response(data=serializer.data, status=status.HTTP_200_OK)
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdmin])
 def create_node_view(request):
